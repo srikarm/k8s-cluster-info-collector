@@ -1,0 +1,288 @@
+# Default values for cluster-info-collector.
+
+# Global configuration
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+
+# Image configuration
+image:
+  registry: docker.io
+  repository: cluster-info-collector
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+consumerImage:
+  registry: docker.io
+  repository: cluster-info-consumer
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+# Service account
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# RBAC configuration
+rbac:
+  create: true
+
+# Collector (Producer) configuration
+collector:
+  enabled: true
+  replicaCount: 1
+  
+  # Scheduling configuration
+  schedule: "*/5 * * * *"  # Every 5 minutes
+  
+  # Run as CronJob or Deployment
+  mode: "cronjob"  # Options: "cronjob", "deployment"
+  
+  # Resource limits
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+  # Node selector
+  nodeSelector: {}
+  
+  # Tolerations
+  tolerations: []
+  
+  # Affinity
+  affinity: {}
+
+# Consumer configuration  
+consumer:
+  enabled: true
+  replicaCount: 2
+  
+  # Resource limits
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+  # Auto-scaling
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 80
+    
+  # Node selector
+  nodeSelector: {}
+  
+  # Tolerations
+  tolerations: []
+  
+  # Affinity
+  affinity: {}
+
+# Application configuration
+config:
+  # Logging
+  logLevel: "info"
+  logFormat: "json"
+  
+  # Kafka configuration
+  kafka:
+    enabled: true
+    topic: "cluster-info"
+    partition: 0
+    # Brokers will be auto-configured from kafka subchart or external config
+
+  # Database configuration
+  database:
+    sslMode: "disable"
+    # Connection details auto-configured from postgresql subchart or external config
+
+  # Optional features
+  metrics:
+    enabled: true
+    port: 8080
+    
+  api:
+    enabled: true
+    port: 8081
+    prefix: "/api/v1"
+    
+  alerting:
+    enabled: false
+    alertmanagerURL: "http://alertmanager:9093"
+    
+  streaming:
+    enabled: false
+    port: 8082
+    
+  retention:
+    enabled: true
+    maxAge: "168h"  # 7 days
+    maxSnapshots: 100
+    cleanupInterval: "6h"
+    deleteBatchSize: 50
+
+# Service configuration
+service:
+  type: ClusterIP
+  ports:
+    metrics: 8080
+    api: 8081
+    streaming: 8082
+
+# Ingress configuration
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: cluster-info.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# Monitoring
+monitoring:
+  serviceMonitor:
+    enabled: false
+    namespace: ""
+    labels: {}
+    interval: 30s
+
+# PostgreSQL subchart configuration
+postgresql:
+  enabled: true
+  auth:
+    database: "clusterinfo"
+    username: "clusterinfo"
+    password: "devpassword"
+  primary:
+    persistence:
+      enabled: true
+      size: 8Gi
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 250m
+
+# External PostgreSQL configuration (when postgresql.enabled = false)
+externalPostgresql:
+  host: "postgres.example.com"
+  port: 5432
+  database: "clusterinfo"
+  username: "clusterinfo"
+  password: "your-password"
+  existingSecret: ""
+  existingSecretPasswordKey: "password"
+
+# Kafka subchart configuration (KRaft mode - no Zookeeper)
+kafka:
+  enabled: true
+  mode: kraft
+  replicaCount: 1
+  
+  # KRaft configuration
+  kraft:
+    enabled: true
+    clusterId: "test-kafka-cluster-id"
+  
+  # Kafka configuration
+  deleteTopicEnable: true
+  autoCreateTopicsEnable: true
+  logRetentionHours: 1
+  numPartitions: 1
+  
+  # Resource configuration
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 250m
+    limits:
+      memory: 512Mi
+      cpu: 500m
+      
+  # Persistence
+  persistence:
+    enabled: true
+    size: 8Gi
+    
+  # Disable Zookeeper (KRaft mode)
+  zookeeper:
+    enabled: false
+
+# External Kafka configuration (when kafka.enabled = false)
+externalKafka:
+  brokers: "kafka.example.com:9092"
+  topic: "cluster-info"
+  existingSecret: ""
+  existingSecretBrokersKey: "brokers"
+
+# Kafka UI configuration
+kafkaUI:
+  enabled: false
+  image:
+    registry: docker.io
+    repository: provectuslabs/kafka-ui
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  
+  # Resource limits
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 8080
+  
+  # Ingress configuration
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    hosts:
+      - host: kafka-ui.local
+        paths:
+          - path: /
+            pathType: Prefix
+    tls: []
+  
+  # Node selector
+  nodeSelector: {}
+  
+  # Tolerations
+  tolerations: []
+  
+  # Affinity
+  affinity: {}
+  
+  # Security context
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1001
+    fsGroup: 1001
+
+# Security context
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+  fsGroup: 1001
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+  fsGroup: 1001

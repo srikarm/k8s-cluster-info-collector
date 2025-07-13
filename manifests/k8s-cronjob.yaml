@@ -1,0 +1,32 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cluster-info-collector-cron
+  namespace: default
+spec:
+  schedule: "0 */6 * * *"  # Run every 6 hours
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: cluster-info-collector
+          restartPolicy: OnFailure
+          containers:
+          - name: cluster-info-collector
+            image: cluster-info-collector:latest
+            imagePullPolicy: IfNotPresent
+            envFrom:
+            - configMapRef:
+                name: cluster-info-collector-config
+            - secretRef:
+                name: cluster-info-collector-secret
+            resources:
+              requests:
+                memory: "128Mi"
+                cpu: "100m"
+              limits:
+                memory: "512Mi"
+                cpu: "500m"
+      backoffLimit: 3
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3

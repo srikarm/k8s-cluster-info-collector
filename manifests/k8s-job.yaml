@@ -1,0 +1,82 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-info-collector-config
+  namespace: default
+data:
+  DB_HOST: "postgres-service"
+  DB_PORT: "5432"
+  DB_USER: "postgres"
+  DB_NAME: "cluster_info"
+  DB_SSL_MODE: "disable"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cluster-info-collector-secret
+  namespace: default
+type: Opaque
+data:
+  DB_PASSWORD:   # base64 encoded "password"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cluster-info-collector
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cluster-info-collector
+rules:
+- apiGroups: [""]
+  resources: ["pods", "nodes", "namespaces"]
+  verbs: ["get", "list"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets"]
+  verbs: ["get", "list"]
+- apiGroups: ["metrics.k8s.io"]
+  resources: ["pods", "nodes"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cluster-info-collector
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-info-collector
+subjects:
+- kind: ServiceAccount
+  name: cluster-info-collector
+  namespace: default
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cluster-info-collector
+  namespace: default
+spec:
+  template:
+    spec:
+      serviceAccountName: cluster-info-collector
+      restartPolicy: OnFailure
+      containers:
+      - name: cluster-info-collector
+        image: cluster-info-collector:latest
+        imagePullPolicy: IfNotPresent
+        envFrom:
+        - configMapRef:
+            name: cluster-info-collector-config
+        - secretRef:
+            name: cluster-info-collector-secret
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+  backoffLimit: 3

@@ -1,0 +1,137 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "Kubernetes Cluster Info Collector - Alerts",
+    "tags": ["kubernetes", "cluster", "alerts"],
+    "style": "dark",
+    "timezone": "browser",
+    "refresh": "30s",
+    "schemaVersion": 27,
+    "version": 1,
+    "time": {
+      "from": "now-24h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Active Alerts",
+        "type": "alertlist",
+        "targets": [],
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 0},
+        "options": {
+          "showOptions": "current",
+          "maxItems": 20,
+          "sortOrder": 1
+        }
+      },
+      {
+        "id": 2,
+        "title": "Node Readiness",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "cluster_info_node_ready",
+            "refId": "A",
+            "format": "table",
+            "instant": true
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "displayMode": "color-background"
+            },
+            "mappings": [
+              {
+                "options": {
+                  "0": {"text": "Not Ready", "color": "red"},
+                  "1": {"text": "Ready", "color": "green"}
+                },
+                "type": "value"
+              }
+            ]
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+      },
+      {
+        "id": 3,
+        "title": "Resource Threshold Violations",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "cluster_info_resource_count > on(resource_type) group_left() cluster_info_resource_threshold",
+            "refId": "A",
+            "format": "table",
+            "instant": true
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+      },
+      {
+        "id": 4,
+        "title": "Collection Failures Over Time",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "increase(cluster_info_collections_total{status=\"failure\"}[1h])",
+            "refId": "A",
+            "legendFormat": "Collection Failures"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": 0},
+                {"color": "yellow", "value": 1},
+                {"color": "red", "value": 5}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+      },
+      {
+        "id": 5,
+        "title": "Database Connection Issues",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "increase(cluster_info_database_errors_total[1h])",
+            "refId": "A",
+            "legendFormat": "Database Errors"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": 0},
+                {"color": "yellow", "value": 1},
+                {"color": "red", "value": 3}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+      }
+    ],
+    "annotations": {
+      "list": [
+        {
+          "name": "Alerts",
+          "datasource": "Prometheus",
+          "enable": true,
+          "expr": "ALERTS{alertname=~\"ClusterCollectionFailure|NodeNotReady|HighResourceCount|DatabaseConnectionFailure\"}",
+          "iconColor": "red",
+          "titleFormat": "{{alertname}}",
+          "textFormat": "{{description}}"
+        }
+      ]
+    }
+  }
+}

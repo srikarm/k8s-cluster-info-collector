@@ -1,0 +1,83 @@
+1. Get the application URL by running these commands:
+{{- if .Values.ingress.enabled }}
+{{- range $host := .Values.ingress.hosts }}
+  {{- range .paths }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $host.host }}{{ .path }}
+  {{- end }}
+{{- end }}
+{{- else if contains "NodePort" .Values.service.type }}
+  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "cluster-info-collector.fullname" . }})
+  export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo http://$NODE_IP:$NODE_PORT
+{{- else if contains "LoadBalancer" .Values.service.type }}
+     NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+           You can watch the status of by running 'kubectl get --namespace {{ .Release.Namespace }} svc -w {{ include "cluster-info-collector.fullname" . }}'
+  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "cluster-info-collector.fullname" . }} --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
+  echo http://$SERVICE_IP:{{ .Values.service.ports.api }}
+{{- else if contains "ClusterIP" .Values.service.type }}
+  export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "cluster-info-collector.name" . }},app.kubernetes.io/instance={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
+  export CONTAINER_PORT=$(kubectl get pod --namespace {{ .Release.Namespace }} $POD_NAME -o jsonpath="{.spec.containers[0].ports[0].containerPort}")
+  echo "Visit http://127.0.0.1:8080 to use your application"
+  kubectl --namespace {{ .Release.Namespace }} port-forward $POD_NAME 8080:$CONTAINER_PORT
+{{- end }}
+
+2. Monitor the cluster information collection:
+  kubectl logs -f deployment/{{ include "cluster-info-collector.fullname" . }}-consumer --namespace {{ .Release.Namespace }}
+
+3. Check PostgreSQL database:
+  {{- if .Values.postgresql.enabled }}
+  kubectl exec -it deployment/{{ .Release.Name }}-postgresql --namespace {{ .Release.Namespace }} -- psql -U {{ .Values.postgresql.auth.username }} -d {{ .Values.postgresql.auth.database }}
+  {{- else }}
+  # Connect to your external PostgreSQL instance using the configured credentials
+  {{- end }}
+
+4. Access Kafka (if enabled):
+  {{- if .Values.kafka.enabled }}
+  kubectl exec -it deployment/{{ .Release.Name }}-kafka --namespace {{ .Release.Namespace }} -- kafka-topics.sh --list --bootstrap-server localhost:9092
+  {{- else }}
+  # Connect to your external Kafka instance
+  {{- end }}
+
+{{- if .Values.kafkaUI.enabled }}
+5. Access Kafka UI for monitoring:
+  {{- if .Values.kafkaUI.ingress.enabled }}
+  {{- range $host := .Values.kafkaUI.ingress.hosts }}
+  {{- range .paths }}
+  Open: http{{ if $.Values.kafkaUI.ingress.tls }}s{{ end }}://{{ $host.host }}{{ .path }}
+  {{- end }}
+  {{- end }}
+  {{- else }}
+  kubectl port-forward service/{{ include "cluster-info-collector.fullname" . }}-kafka-ui {{ .Values.kafkaUI.service.port }}:{{ .Values.kafkaUI.service.port }} --namespace {{ .Release.Namespace }}
+  Then open: http://localhost:{{ .Values.kafkaUI.service.port }}
+  {{- end }}
+
+6. View API documentation:
+{{- else }}
+5. View API documentation:
+{{- end }}
+  {{- if .Values.ingress.enabled }}
+  {{- range $host := .Values.ingress.hosts }}
+  {{- range .paths }}
+  Open: http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $host.host }}{{ .path }}/swagger/
+  {{- end }}
+  {{- end }}
+  {{- else }}
+  kubectl port-forward service/{{ include "cluster-info-collector.fullname" . }} 8080:{{ .Values.service.ports.api }} --namespace {{ .Release.Namespace }}
+  Then open: http://localhost:8080/swagger/
+  {{- end }}
+
+{{- if .Values.kafkaUI.enabled }}
+7. Scale the consumer deployment:
+{{- else }}
+6. Scale the consumer deployment:
+{{- end }}
+  kubectl scale deployment {{ include "cluster-info-collector.fullname" . }}-consumer --replicas=3 --namespace {{ .Release.Namespace }}
+
+{{- if .Values.kafkaUI.enabled }}
+8. Check HPA status (if enabled):
+{{- else }}
+7. Check HPA status (if enabled):
+{{- end }}
+  {{- if .Values.consumer.autoscaling.enabled }}
+  kubectl get hpa {{ include "cluster-info-collector.fullname" . }}-consumer --namespace {{ .Release.Namespace }}
+  {{- end }}

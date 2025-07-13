@@ -1,0 +1,52 @@
+{{- if and .Values.collector.enabled (eq .Values.collector.mode "cronjob") }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "cluster-info-collector.fullname" . }}-collector
+  labels:
+    {{- include "cluster-info-collector.collector.labels" . | nindent 4 }}
+spec:
+  schedule: "{{ .Values.collector.schedule }}"
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            {{- include "cluster-info-collector.collector.selectorLabels" . | nindent 12 }}
+        spec:
+          serviceAccountName: {{ include "cluster-info-collector.serviceAccountName" . }}
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          containers:
+          - name: collector
+            image: {{ include "cluster-info-collector.image" . }}
+            imagePullPolicy: {{ .Values.image.pullPolicy }}
+            securityContext:
+              {{- toYaml .Values.securityContext | nindent 14 }}
+            envFrom:
+            - configMapRef:
+                name: {{ include "cluster-info-collector.fullname" . }}-config
+            - secretRef:
+                name: {{ include "cluster-info-collector.fullname" . }}-secret
+            resources:
+              {{- toYaml .Values.collector.resources | nindent 14 }}
+            {{- if .Values.config.metrics.enabled }}
+            ports:
+            - name: metrics
+              containerPort: {{ .Values.config.metrics.port }}
+              protocol: TCP
+            {{- end }}
+          restartPolicy: OnFailure
+          {{- with .Values.collector.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.collector.affinity }}
+          affinity:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.collector.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}

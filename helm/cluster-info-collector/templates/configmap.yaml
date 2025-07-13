@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "cluster-info-collector.fullname" . }}-config
+  labels:
+    {{- include "cluster-info-collector.labels" . | nindent 4 }}
+data:
+  # Kafka Configuration
+  KAFKA_ENABLED: "{{ .Values.config.kafka.enabled }}"
+  KAFKA_BROKERS: "{{ include "cluster-info-collector.kafkaBrokers" . }}"
+  KAFKA_TOPIC: "{{ .Values.config.kafka.topic }}"
+  KAFKA_PARTITION: "{{ .Values.config.kafka.partition }}"
+  
+  # Database Configuration
+  DB_HOST: "{{ include "cluster-info-collector.postgresqlHost" . }}"
+  DB_PORT: "{{ include "cluster-info-collector.postgresqlPort" . }}"
+  DB_USER: "{{ include "cluster-info-collector.postgresqlUsername" . }}"
+  DB_NAME: "{{ include "cluster-info-collector.postgresqlDatabase" . }}"
+  DB_SSL_MODE: "{{ .Values.config.database.sslMode }}"
+  
+  # Logging Configuration
+  LOG_LEVEL: "{{ .Values.config.logLevel }}"
+  LOG_FORMAT: "{{ .Values.config.logFormat }}"
+  
+  # Optional Features
+  METRICS_ENABLED: "{{ .Values.config.metrics.enabled }}"
+  METRICS_ADDRESS: ":{{ .Values.config.metrics.port }}"
+  
+  API_ENABLED: "{{ .Values.config.api.enabled }}"
+  API_ADDRESS: ":{{ .Values.config.api.port }}"
+  API_PREFIX: "{{ .Values.config.api.prefix }}"
+  
+  ALERTING_ENABLED: "{{ .Values.config.alerting.enabled }}"
+  ALERTMANAGER_URL: "{{ .Values.config.alerting.alertmanagerURL }}"
+  
+  STREAMING_ENABLED: "{{ .Values.config.streaming.enabled }}"
+  STREAMING_ADDRESS: ":{{ .Values.config.streaming.port }}"
+  
+  # Retention Configuration
+  RETENTION_ENABLED: "{{ .Values.config.retention.enabled }}"
+  RETENTION_MAX_AGE: "{{ .Values.config.retention.maxAge }}"
+  RETENTION_MAX_SNAPSHOTS: "{{ .Values.config.retention.maxSnapshots }}"
+  RETENTION_CLEANUP_INTERVAL: "{{ .Values.config.retention.cleanupInterval }}"
+  RETENTION_DELETE_BATCH_SIZE: "{{ .Values.config.retention.deleteBatchSize }}"
