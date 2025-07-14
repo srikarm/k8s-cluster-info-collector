@@ -38,7 +38,7 @@ type App struct {
 }
 
 // New creates a new application instance
-func New() (*App, error) {
+func New(version, commitHash string) (*App, error) {
 	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
@@ -98,8 +98,73 @@ func New() (*App, error) {
 	// Initialize collector with Kafka producer
 	clusterCollector := collector.New(k8sClient, kafkaProducer, log)
 
-	// Collector runs as Job - no HTTP servers or background services needed
-	// All services (metrics, API, streaming, retention) are disabled for Job mode
+	// Initialize metrics if enabled
+	var metricsInstance *metrics.Metrics
+	if cfg.Metrics.Enabled {
+		metricsInstance = metrics.New(log)
+
+		// Start metrics server in background
+		go func() {
+			if err := metricsInstance.StartMetricsServer(cfg.Metrics.Address); err != nil {
+				log.WithError(err).Error("Failed to start metrics server")
+			}
+		}()
+	}
+
+	// Initialize retention manager if enabled
+	var retentionManager *retention.RetentionManager
+	if cfg.Retention.Enabled {
+		retentionConfig := retention.RetentionConfig{
+			Enabled:         cfg.Retention.Enabled,
+			MaxAge:          cfg.Retention.MaxAge,
+			MaxSnapshots:    cfg.Retention.MaxSnapshots,
+			CleanupInterval: cfg.Retention.CleanupInterval,
+			DeleteBatchSize: cfg.Retention.DeleteBatchSize,
+		}
+		retentionManager = retention.New(db, log, retentionConfig)
+
+		// Start retention manager
+		retentionManager.Start()
+	}
+
+	// Initialize alerting if enabled
+	var alertingManager *alerting.AlertManager
+	if cfg.Alerting.Enabled {
+		alertingConfig := alerting.Config{
+			Enabled:            cfg.Alerting.Enabled,
+			AlertmanagerURL:    cfg.Alerting.AlertmanagerURL,
+			Timeout:            cfg.Alerting.Timeout,
+			CollectionFailures: cfg.Alerting.CollectionFailures,
+			ResourceThresholds: cfg.Alerting.ResourceThresholds,
+			NodeDownAlerts:     cfg.Alerting.NodeDownAlerts,
+		}
+		alertingManager = alerting.NewAlertManager(alertingConfig, log)
+	}
+
+	// Initialize streaming hub if enabled
+	var streamingHub *streaming.Hub
+	if cfg.Streaming.Enabled {
+		streamingHub = streaming.NewHub(log)
+		go streamingHub.Run()
+	}
+
+	// Initialize API server if enabled
+	var apiServer *api.Server
+	if cfg.API.Enabled {
+		apiConfig := api.APIConfig{
+			Enabled: cfg.API.Enabled,
+			Address: cfg.API.Address,
+			Prefix:  cfg.API.Prefix,
+		}
+		apiServer = api.New(db, log, apiConfig, streamingHub, version, commitHash)
+
+		// Start API server in background
+		go func() {
+			if err := apiServer.Start(); err != nil {
+				log.WithError(err).Error("Failed to start API server")
+			}
+		}()
+	}
 
 	return &App{
 		config:        cfg,
@@ -109,12 +174,12 @@ func New() (*App, error) {
 		collector:     clusterCollector,
 		store:         dataStore,
 		kafkaProducer: kafkaProducer,
-		// All HTTP servers and background services removed for Job mode
-		metrics:      nil,
-		retention:    nil,
-		alerting:     nil,
-		apiServer:    nil,
-		streamingHub: nil,
+		// kafkaConsumer removed - handled by separate consumer binary
+		metrics:      metricsInstance,
+		retention:    retentionManager,
+		alerting:     alertingManager,
+		apiServer:    apiServer,
+		streamingHub: streamingHub,
 	}, nil
 }
 
@@ -123,18 +188,27 @@ func (a *App) Run(ctx context.Context) error {
 	// Note: Kafka consumer is handled by separate consumer binary
 	// This collector only produces to Kafka when Kafka is enabled
 
-	// Collector always runs in one-shot mode like a Kubernetes Job:
-	// 1. Start up and verify connectivity to services
-	// 2. Collect cluster information
-	// 3. Write to output destination (Kafka or Database)
-	// 4. Exit cleanly
-	// This behavior is consistent whether running as K8s Job, CronJob, or locally
+	// Check if this should run as a service (any background services enabled)
+	// Note: Kafka.Enabled is NOT included here - Kafka is just an output method, not a service
+	isService := a.config.API.Enabled || a.config.Metrics.Enabled || a.config.Streaming.Enabled || a.config.Retention.Enabled
 
-	a.logger.Info("Starting cluster information collector (Job mode)")
-	a.logger.Info("Collector behavior: start → collect → write → exit")
+	if isService {
+		a.logger.Info("Starting cluster information collector in service mode")
+		// Run initial collection
+		if err := a.collectAndStore(ctx); err != nil {
+			return err
+		}
 
-	// Run single collection and exit (Job behavior)
-	return a.collectAndStore(ctx)
+		// Keep running until context is cancelled
+		a.logger.Info("Service mode: keeping application running...")
+		<-ctx.Done()
+		a.logger.Info("Received shutdown signal")
+		return nil
+	} else {
+		a.logger.Info("Starting cluster information collection (one-shot mode)")
+		// Run single collection and exit
+		return a.collectAndStore(ctx)
+	}
 }
 
 // collectAndStore performs a single collection and storage cycle

@@ -98,10 +98,25 @@ func (c *Consumer) Stop() error {
 	c.wg.Wait()
 
 	if c.consumer != nil {
-		return c.consumer.Close()
+		err := c.consumer.Close()
+		if err != nil {
+			// If error is connection refused, clarify it's a Kafka connectivity issue
+			if err.Error() == "kafka: client has run out of available brokers to talk to (Is your cluster reachable?)" ||
+				(err.Error() != "" && (contains(err.Error(), "connection refused") || contains(err.Error(), "dial tcp"))) {
+				c.logger.Warnf("Kafka connectivity issue during shutdown: %v (Kafka may be down; this does not indicate a consumer port problem)", err)
+			} else {
+				c.logger.Errorf("Error closing Kafka consumer group: %v", err)
+			}
+			return err
+		}
 	}
 
 	return nil
+}
+
+// contains is a helper for substring search
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || (len(s) > len(substr) && (s[:len(substr)] == substr || contains(s[1:], substr))))
 }
 
 // Setup is run at the beginning of a new session, before ConsumeClaim

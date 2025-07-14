@@ -7,43 +7,49 @@ if [[ -f "./namespace-functions.sh" ]]; then
     source ./namespace-functions.sh
 fi
 
-echo "🚀 Kubernetes Cluster Info Collector v2.0 - Setup & Deploy"
-echo "=========================================================="
-echo ""
-echo "🆕 v2.0 Features:"
-echo "• 9 Kubernetes Resource Types (Pods, Nodes, Deployments, Services, etc.)"
-echo "• Kafka Integration & Streaming for High-Volume Clusters"
-echo "• Job-Based Execution (start → collect → write → exit)"
-echo "• Data Retention Management for Storage Optimization"
-echo ""
-echo "🎯 Hybrid Development Mode (Recommended for Development):"
-echo "• Local Binary: Fast iteration with instant rebuilds (no Docker)"
-echo "• K8s Services: Production-like PostgreSQL/Kafka in cluster"
-echo "• Port Forwarding: Seamless connection between local and cluster"
-echo "• Live Data: Real cluster information for realistic testing"
-echo "• Easy Debugging: Use any Go debugging tools locally"
+# Function to show banner
+show_banner() {
+    echo "🚀 Kubernetes Cluster Info Collector v2.0 - Setup & Deploy"
+    echo "=========================================================="
+    echo ""
+    echo "🆕 v2.0 Features:"
+    echo "• 9 Kubernetes Resource Types (Pods, Nodes, Deployments, Services, etc.)"
+    echo "• Kafka Integration & Streaming for High-Volume Clusters"
+    echo "• Job-Based Execution (start → collect → write → exit)"
+    echo "• Data Retention Management for Storage Optimization"
+    echo ""
+    echo "🎯 Hybrid Development Mode (Recommended for Development):"
+    echo "• Local Binary: Fast iteration with instant rebuilds (no Docker)"
+    echo "• K8s Services: Production-like PostgreSQL/Kafka in cluster"
+    echo "• Port Forwarding: Seamless connection between local and cluster"
+    echo "• Live Data: Real cluster information for realistic testing"
+    echo "• Easy Debugging: Use any Go debugging tools locally"
+}
 
-# Check if kubectl is available
-if ! command -v kubectl &> /dev/null; then
-    echo "❌ kubectl is not installed or not in PATH"
-    exit 1
-fi
+# Function to check cluster connectivity
+check_cluster_connectivity() {
+    # Check if kubectl is available
+    if ! command -v kubectl &> /dev/null; then
+        echo "❌ kubectl is not installed or not in PATH"
+        exit 1
+    fi
 
-# Check if we can connect to Kubernetes cluster
-if ! kubectl cluster-info &> /dev/null; then
-    echo "❌ Cannot connect to Kubernetes cluster"
-    echo "Please ensure kubectl is configured correctly"
-    exit 1
-fi
+    # Check if we can connect to Kubernetes cluster
+    if ! kubectl cluster-info &> /dev/null; then
+        echo "❌ Cannot connect to Kubernetes cluster"
+        echo "Please ensure kubectl is configured correctly"
+        exit 1
+    fi
 
-echo "✅ Kubernetes cluster connection verified"
+    echo "✅ Kubernetes cluster connection verified"
 
-# Check if Docker is available (for building images)
-if ! command -v docker &> /dev/null; then
-    echo "⚠️ Docker is not installed - you'll need to build images manually"
-else
-    echo "✅ Docker is available"
-fi
+    # Check if Docker is available (for building images)
+    if ! command -v docker &> /dev/null; then
+        echo "⚠️ Docker is not installed - you'll need to build images manually"
+    else
+        echo "✅ Docker is available"
+    fi
+}
 
 # Function to check RBAC permissions
 check_rbac_permissions() {
@@ -1158,6 +1164,9 @@ export DB_USER=clusterinfo
 export DB_PASSWORD=devpassword
 export DB_SSLMODE=disable
 export LOG_LEVEL=info
+export CONSUMER_SERVER_ENABLED=true
+export CONSUMER_SERVER_PORT=8083
+export CONSUMER_SERVER_ADDRESS=
 EOF
         echo "✅ Consumer environment created (.env.hybrid-consumer)"
         echo "   📋 Key settings: Kafka→PostgreSQL data flow"
@@ -1913,8 +1922,196 @@ setup_port_forward() {
     fi
 }
 
+# Function to show usage
+show_usage() {
+    echo "Usage: $0 [COMMAND]"
+    echo ""
+    echo "Commands:"
+    echo "  setup                 Run interactive setup (default)"
+    echo "  stop                  Stop all running collector and consumer processes"
+    echo "  stop-collector        Stop only collector processes"
+    echo "  stop-consumer         Stop only consumer processes"
+    echo "  status                Show status of running processes"
+    echo "  help                  Show this help message"
+    echo ""
+    echo "Examples:"
+    echo "  $0                    # Run interactive setup"
+    echo "  $0 setup              # Run interactive setup"
+    echo "  $0 stop               # Stop all processes"
+    echo "  $0 stop-collector     # Stop only collector"
+    echo "  $0 stop-consumer      # Stop only consumer"
+    echo "  $0 status             # Show process status"
+}
+
+# Function to stop collector processes
+stop_collector_processes() {
+    echo "🛑 Stopping collector processes..."
+    
+    # Stop collector binaries
+    local stopped=false
+    
+    # Kill collector processes by name
+    if pgrep -f "./bin/collector" >/dev/null; then
+        pkill -f "./bin/collector"
+        echo "✅ Stopped collector binary processes"
+        stopped=true
+    fi
+    
+    # Check for PIDs in temporary files
+    if [ -f /tmp/e2e-collector-bg.pid ]; then
+        local collector_pid=$(cat /tmp/e2e-collector-bg.pid)
+        if ps -p $collector_pid > /dev/null 2>&1; then
+            kill $collector_pid
+            echo "✅ Stopped background collector (PID: $collector_pid)"
+            stopped=true
+        fi
+        rm -f /tmp/e2e-collector-bg.pid
+    fi
+    
+    # Look for any other collector processes
+    local other_pids=$(pgrep -f "collector" | grep -v $$ || true)
+    if [ -n "$other_pids" ]; then
+        echo "$other_pids" | xargs kill 2>/dev/null || true
+        echo "✅ Stopped additional collector processes"
+        stopped=true
+    fi
+    
+    if [ "$stopped" = false ]; then
+        echo "ℹ️ No collector processes found running"
+    fi
+}
+
+# Function to stop consumer processes
+stop_consumer_processes() {
+    echo "🛑 Stopping consumer processes..."
+    
+    # Stop consumer binaries
+    local stopped=false
+    
+    # Kill consumer processes by name
+    if pgrep -f "./bin/consumer" >/dev/null; then
+        pkill -f "./bin/consumer"
+        echo "✅ Stopped consumer binary processes"
+        stopped=true
+    fi
+    
+    # Check for PIDs in temporary files
+    if [ -f /tmp/e2e-consumer-bg.pid ]; then
+        local consumer_pid=$(cat /tmp/e2e-consumer-bg.pid)
+        if ps -p $consumer_pid > /dev/null 2>&1; then
+            kill $consumer_pid
+            echo "✅ Stopped background consumer (PID: $consumer_pid)"
+            stopped=true
+        fi
+        rm -f /tmp/e2e-consumer-bg.pid
+    fi
+    
+    # Look for any other consumer processes
+    local other_pids=$(pgrep -f "consumer" | grep -v $$ || true)
+    if [ -n "$other_pids" ]; then
+        echo "$other_pids" | xargs kill 2>/dev/null || true
+        echo "✅ Stopped additional consumer processes"
+        stopped=true
+    fi
+    
+    if [ "$stopped" = false ]; then
+        echo "ℹ️ No consumer processes found running"
+    fi
+}
+
+# Function to stop all processes
+stop_all_processes() {
+    # Basic check for kubectl
+    if ! command -v kubectl &> /dev/null; then
+        echo "❌ kubectl is not installed or not in PATH"
+        exit 1
+    fi
+    
+    echo "🛑 Stopping all collector and consumer processes..."
+    echo ""
+    
+    stop_consumer_processes
+    echo ""
+    stop_collector_processes
+    
+    # Also clean up any port forwards related to testing
+    echo ""
+    echo "🔗 Cleaning up port forwards..."
+    pkill -f "kubectl.*port-forward.*5432" 2>/dev/null && echo "✅ Stopped PostgreSQL port forward" || true
+    pkill -f "kubectl.*port-forward.*9092" 2>/dev/null && echo "✅ Stopped Kafka port forward" || true
+    pkill -f "kubectl.*port-forward.*8080" 2>/dev/null && echo "✅ Stopped Kafka UI port forward" || true
+    pkill -f "kubectl.*port-forward.*8090" 2>/dev/null && echo "✅ Stopped alternate Kafka UI port forward" || true
+    
+    echo ""
+    echo "✅ All processes stopped"
+}
+
+# Function to show process status
+show_process_status() {
+    echo "📊 Process Status"
+    echo "=================="
+    echo ""
+    
+    echo "🔍 Collector Processes:"
+    local collector_procs=$(pgrep -f "./bin/collector" 2>/dev/null || true)
+    if [ -n "$collector_procs" ]; then
+        echo "✅ Found collector processes:"
+        ps -p $collector_procs -o pid,ppid,cmd 2>/dev/null || true
+    else
+        echo "ℹ️ No collector processes running"
+    fi
+    
+    echo ""
+    echo "🔍 Consumer Processes:"
+    local consumer_procs=$(pgrep -f "./bin/consumer" 2>/dev/null || true)
+    if [ -n "$consumer_procs" ]; then
+        echo "✅ Found consumer processes:"
+        ps -p $consumer_procs -o pid,ppid,cmd 2>/dev/null || true
+    else
+        echo "ℹ️ No consumer processes running"
+    fi
+    
+    echo ""
+    echo "🔍 Port Forward Processes:"
+    local port_forwards=$(pgrep -f "kubectl.*port-forward" 2>/dev/null || true)
+    if [ -n "$port_forwards" ]; then
+        echo "✅ Found port forward processes:"
+        ps -p $port_forwards -o pid,cmd 2>/dev/null | grep -E "(5432|8080|8090|9092)" || true
+    else
+        echo "ℹ️ No port forward processes running"
+    fi
+    
+    echo ""
+    echo "📁 Background Process Files:"
+    if [ -f /tmp/e2e-collector-bg.pid ]; then
+        local bg_collector_pid=$(cat /tmp/e2e-collector-bg.pid)
+        if ps -p $bg_collector_pid > /dev/null 2>&1; then
+            echo "✅ Background collector PID file: $bg_collector_pid (running)"
+        else
+            echo "⚠️ Background collector PID file: $bg_collector_pid (not running)"
+        fi
+    fi
+    
+    if [ -f /tmp/e2e-consumer-bg.pid ]; then
+        local bg_consumer_pid=$(cat /tmp/e2e-consumer-bg.pid)
+        if ps -p $bg_consumer_pid > /dev/null 2>&1; then
+            echo "✅ Background consumer PID file: $bg_consumer_pid (running)"
+        else
+            echo "⚠️ Background consumer PID file: $bg_consumer_pid (not running)"
+        fi
+    fi
+    
+    if [ ! -f /tmp/e2e-collector-bg.pid ] && [ ! -f /tmp/e2e-consumer-bg.pid ]; then
+        echo "ℹ️ No background process PID files found"
+    fi
+}
+
 # Main execution logic
 main() {
+    show_banner
+    check_cluster_connectivity
+    
+    echo ""
     echo "🚀 K8s Cluster Info Collector - Hybrid Development Setup"
     echo "======================================================="
     echo ""
@@ -2555,7 +2752,37 @@ EOF
     echo "   • Stop all: ./e2e-helper.sh stop"
 }
 
+# Handle command line arguments
+handle_command() {
+    case "$1" in
+        "setup"|"")
+            main
+            ;;
+        "stop")
+            stop_all_processes
+            ;;
+        "stop-collector")
+            stop_collector_processes
+            ;;
+        "stop-consumer")
+            stop_consumer_processes
+            ;;
+        "status")
+            show_process_status
+            ;;
+        "help"|"-h"|"--help")
+            show_usage
+            ;;
+        *)
+            echo "❌ Unknown command: $1"
+            echo ""
+            show_usage
+            exit 1
+            ;;
+    esac
+}
+
 # Run main function if script is executed directly
 if [ "${BASH_SOURCE[0]}" == "${0}" ]; then
-    main
+    handle_command "$1"
 fi

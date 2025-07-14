@@ -1,6 +1,11 @@
 # Build stage
 FROM golang:1.24-alpine AS builder
 
+# Build arguments for version information
+ARG VERSION=dev
+ARG COMMIT_HASH=unknown
+ARG BUILD_TIME=unknown
+
 WORKDIR /app
 
 # Copy go mod and sum files
@@ -12,8 +17,10 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build the consumer application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o consumer ./cmd/consumer
+# Build the consumer application with version info
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo \
+    -ldflags "-X main.version=${VERSION} -X main.commitHash=${COMMIT_HASH} -X main.buildTime=${BUILD_TIME}" \
+    -o consumer ./cmd/consumer
 
 # Final stage
 FROM alpine:latest
@@ -31,6 +38,7 @@ RUN addgroup -g 1001 -S appuser && \
 
 USER appuser
 
-EXPOSE 8080
+# Expose ports for health/metrics endpoints
+EXPOSE 8083
 
 CMD ["./consumer"]

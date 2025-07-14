@@ -62,6 +62,11 @@ consumer:
   enabled: true
   replicaCount: 2
   
+  # HTTP server configuration for health/metrics
+  server:
+    enabled: true
+    port: 8083
+  
   # Resource limits
   resources:
     limits:
@@ -137,6 +142,7 @@ service:
     metrics: 8080
     api: 8081
     streaming: 8082
+    consumer: 8083
 
 # Ingress configuration
 ingress:

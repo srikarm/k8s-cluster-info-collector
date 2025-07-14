@@ -7,16 +7,30 @@ This directory contains utility scripts for the Kubernetes Cluster Info Collecto
 ### 🚀 **Deployment & Setup**
 
 #### `setup-hybrid.sh`
-**Main development setup script with interactive menu**
+**Main development setup script with interactive menu and process management**
 - **Purpose**: Complete setup for hybrid development mode (local binary + K8s services)
-- **Features**: 6 enhanced development modes, auto port-forwarding, database verification
-- **Usage**: `./scripts/setup-hybrid.sh`
+- **Features**: 6 enhanced development modes, auto port-forwarding, database verification, process management
+- **Usage**: 
+  ```bash
+  ./scripts/setup-hybrid.sh [COMMAND]
+  
+  Commands:
+    setup                 Run interactive setup (default)
+    stop                  Stop all running collector and consumer processes
+    stop-collector        Stop only collector processes  
+    stop-consumer         Stop only consumer processes
+    status                Show status of running processes
+    help                  Show help message
+  ```
 - **Dependencies**: kubectl, docker
 - **Key Features**:
   - Interactive mode selection
   - Automatic PostgreSQL deployment and health checks  
   - Port forwarding management
   - Database creation and verification
+  - **NEW**: Process management for local development
+  - **NEW**: Clean shutdown of collector/consumer processes
+  - **NEW**: Status monitoring of running processes
   - Enhanced educational content for development workflows
 
 #### `deploy.sh`

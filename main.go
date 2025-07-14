@@ -10,13 +10,18 @@ import (
 	"k8s-cluster-info-collector/internal/app"
 )
 
+var (
+	version    string
+	commitHash string
+)
+
 func main() {
 	// Create context that listens for the interrupt signal from the OS
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	// Initialize and run the application
-	application, err := app.New()
+	application, err := app.New(version, commitHash)
 	if err != nil {
 		log.Fatalf("Failed to initialize application: %v", err)
 	}

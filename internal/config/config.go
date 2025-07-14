@@ -21,6 +21,7 @@ type Config struct {
 	Alerting  AlertingConfig
 	Streaming StreamingConfig
 	Kafka     KafkaConfig
+	Consumer  ConsumerConfig
 }
 
 // DatabaseConfig holds database connection configuration
@@ -88,6 +89,18 @@ type KafkaConfig struct {
 	Brokers   []string
 	Topic     string
 	Partition int32
+}
+
+// ConsumerConfig holds consumer HTTP server configuration
+type ConsumerConfig struct {
+	Server ConsumerServerConfig
+}
+
+// ConsumerServerConfig holds consumer HTTP server configuration
+type ConsumerServerConfig struct {
+	Enabled bool
+	Address string
+	Port    int
 }
 
 // Load loads configuration from environment variables and .env file
@@ -199,6 +212,21 @@ func Load() (*Config, error) {
 		}
 	}
 
+	// Parse consumer configuration
+	consumerServerEnabled := false
+	if value := os.Getenv("CONSUMER_SERVER_ENABLED"); value != "" {
+		if parsedValue, err := strconv.ParseBool(value); err == nil {
+			consumerServerEnabled = parsedValue
+		}
+	}
+
+	consumerServerPort := 8083
+	if value := os.Getenv("CONSUMER_SERVER_PORT"); value != "" {
+		if parsedValue, err := strconv.Atoi(value); err == nil {
+			consumerServerPort = parsedValue
+		}
+	}
+
 	config := &Config{
 		Database: DatabaseConfig{
 			Host:     getEnvOrDefault("DB_HOST", "localhost"),
@@ -248,6 +276,13 @@ func Load() (*Config, error) {
 			Brokers:   kafkaBrokers,
 			Topic:     getEnvOrDefault("KAFKA_TOPIC", "cluster-info"),
 			Partition: kafkaPartition,
+		},
+		Consumer: ConsumerConfig{
+			Server: ConsumerServerConfig{
+				Enabled: consumerServerEnabled,
+				Address: getEnvOrDefault("CONSUMER_SERVER_ADDRESS", ""),
+				Port:    consumerServerPort,
+			},
 		},
 	}
 

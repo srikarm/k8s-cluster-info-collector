@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"runtime"
 	"strconv"
 	"time"
 
@@ -18,11 +19,13 @@ import (
 
 // Server represents the REST API server
 type Server struct {
-	db     *database.DB
-	logger *logrus.Logger
-	router *mux.Router
-	config APIConfig
-	hub    *streaming.Hub
+	db         *database.DB
+	logger     *logrus.Logger
+	router     *mux.Router
+	config     APIConfig
+	hub        *streaming.Hub
+	version    string
+	commitHash string
 }
 
 // APIConfig holds API server configuration
@@ -33,15 +36,16 @@ type APIConfig struct {
 }
 
 // New creates a new API server
-func New(db *database.DB, logger *logrus.Logger, config APIConfig, hub *streaming.Hub) *Server {
+func New(db *database.DB, logger *logrus.Logger, config APIConfig, hub *streaming.Hub, version, commitHash string) *Server {
 	s := &Server{
-		db:     db,
-		logger: logger,
-		router: mux.NewRouter(),
-		config: config,
-		hub:    hub,
+		db:         db,
+		logger:     logger,
+		router:     mux.NewRouter(),
+		config:     config,
+		hub:        hub,
+		version:    version,
+		commitHash: commitHash,
 	}
-
 	s.setupRoutes()
 	return s
 }
@@ -58,6 +62,9 @@ func (s *Server) setupRoutes() {
 	// Middleware
 	api.Use(s.loggingMiddleware)
 	api.Use(s.corsMiddleware)
+
+	// Root endpoint: list available endpoints
+	api.HandleFunc("/", s.rootHandler).Methods("GET")
 
 	// Snapshots endpoints
 	api.HandleFunc("/snapshots", s.getSnapshots).Methods("GET")
@@ -82,8 +89,142 @@ func (s *Server) setupRoutes() {
 	api.HandleFunc("/stats", s.getStats).Methods("GET")
 	api.HandleFunc("/stats/retention", s.getRetentionStats).Methods("GET")
 
-	// Health endpoint
-	api.HandleFunc("/health", s.getHealth).Methods("GET")
+	// Health endpoints
+	api.HandleFunc("/health", s.healthHandler).Methods("GET")
+	api.HandleFunc("/healthz", s.healthHandler).Methods("GET") // Kubernetes style
+
+	// Metrics endpoint
+	api.HandleFunc("/metrics", s.metricsHandler).Methods("GET")
+
+	// Ready endpoint (for Kubernetes readiness probe)
+	api.HandleFunc("/ready", s.readyHandler).Methods("GET")
+
+	// Version endpoint
+	api.HandleFunc("/version", s.versionHandler).Methods("GET")
+}
+
+// rootHandler returns a list of available endpoints
+func (s *Server) rootHandler(w http.ResponseWriter, r *http.Request) {
+	endpoints := []string{
+		"/snapshots",
+		"/snapshots/{id}",
+		"/snapshots/latest",
+		"/deployments",
+		"/pods",
+		"/nodes",
+		"/services",
+		"/ingresses",
+		"/configmaps",
+		"/secrets",
+		"/persistent-volumes",
+		"/persistent-volume-claims",
+		"/ws",
+		"/stats",
+		"/stats/retention",
+		"/health",
+		"/healthz",
+		"/metrics",
+		"/ready",
+		"/version",
+	}
+	s.writeJSON(w, map[string]interface{}{
+		"service":   "k8s-cluster-info-collector API",
+		"version":   s.version,
+		"commit":    s.commitHash,
+		"endpoints": endpoints,
+	})
+}
+
+// Health handler (merged from consumer/server)
+func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
+	// Check database connectivity
+	status := "healthy"
+	dbStatus := "healthy"
+	if err := s.db.Ping(); err != nil {
+		dbStatus = "unavailable"
+		status = "degraded"
+	}
+
+	description := "Kubernetes Cluster Info Collector API. Provides cluster resource, snapshot, stats, health, and metrics endpoints."
+
+	checks := map[string]string{
+		"database": dbStatus,
+		"server":   "healthy",
+	}
+
+	response := map[string]interface{}{
+		"status":      status,
+		"timestamp":   time.Now().Format(time.RFC3339),
+		"service":     "api-server",
+		"description": description,
+		"checks":      checks,
+	}
+	w.Header().Set("Content-Type", "application/json")
+	encoder := json.NewEncoder(w)
+	encoder.SetIndent("", "  ")
+	encoder.Encode(response)
+}
+
+// Metrics handler (merged from consumer/server)
+func (s *Server) metricsHandler(w http.ResponseWriter, r *http.Request) {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+
+	metrics := map[string]interface{}{
+		"go_version":    runtime.Version(),
+		"num_goroutine": runtime.NumGoroutine(),
+		"num_cpu":       runtime.NumCPU(),
+		"memory": map[string]interface{}{
+			"alloc_mb":       bToMb(m.Alloc),
+			"total_alloc_mb": bToMb(m.TotalAlloc),
+			"sys_mb":         bToMb(m.Sys),
+			"heap_alloc_mb":  bToMb(m.HeapAlloc),
+			"heap_sys_mb":    bToMb(m.HeapSys),
+			"heap_idle_mb":   bToMb(m.HeapIdle),
+			"heap_inuse_mb":  bToMb(m.HeapInuse),
+			"num_gc":         m.NumGC,
+		},
+		"os": map[string]interface{}{
+			"goos":   runtime.GOOS,
+			"goarch": runtime.GOARCH,
+		},
+		"timestamp": time.Now().Format(time.RFC3339),
+	}
+	w.Header().Set("Content-Type", "application/json")
+	encoder := json.NewEncoder(w)
+	encoder.SetIndent("", "  ")
+	encoder.Encode(metrics)
+}
+
+// Ready handler (merged from consumer/server)
+func (s *Server) readyHandler(w http.ResponseWriter, r *http.Request) {
+	// Ready if DB is reachable
+	if err := s.db.Ping(); err == nil {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ready"))
+	} else {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Write([]byte("not ready"))
+	}
+}
+
+// Version handler (merged from consumer/server)
+func (s *Server) versionHandler(w http.ResponseWriter, r *http.Request) {
+	version := map[string]string{
+		"version":     s.version,
+		"commit_hash": s.commitHash,
+		"go_version":  runtime.Version(),
+		"service":     "api-server",
+	}
+	w.Header().Set("Content-Type", "application/json")
+	encoder := json.NewEncoder(w)
+	encoder.SetIndent("", "  ")
+	encoder.Encode(version)
+}
+
+// Helper for MB conversion
+func bToMb(b uint64) uint64 {
+	return b / 1024 / 1024
 }
 
 // Start starts the API server
@@ -439,5 +580,3 @@ func (s *Server) BroadcastUpdate(data *models.ClusterInfo) {
 		s.hub.BroadcastClusterUpdate(data)
 	}
 }
-
-// writeJSON writes JSON response

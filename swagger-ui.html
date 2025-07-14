@@ -27,78 +27,51 @@
     <script>
         window.onload = function() {
             // Parse YAML content
-            const yaml = `openapi: 3.0.3
+            const yaml = `
+# --- BEGIN FULL REST API SWAGGER ---
+openapi: 3.0.3
 info:
-  title: Kubernetes Cluster Info Collector API v2.0
+  title: Cluster Info Collector API
+  version: 1.0.0
   description: |
-    A comprehensive REST API for querying Kubernetes cluster information collected by the Cluster Info Collector v2.0.
-    
-    ## Features
-    - **9 Resource Types**: Deployments, Pods, Nodes, Services, Ingresses, ConfigMaps, Secrets, PersistentVolumes, PersistentVolumeClaims
-    - **Dual Architecture**: Legacy direct-write and Kafka-based streaming
-    - **Real-time Streaming**: WebSocket API for live cluster data
-    - **Historical Data**: Time-series analysis with configurable retention
-    - **Monitoring**: Prometheus metrics and health endpoints
-    - **Data Retention**: Automated cleanup with configurable policies
-    
-    ## Architecture Modes
-    - **Legacy Mode**: Direct database writes (simple deployment)
-    - **Kafka Mode**: Producer-consumer pattern with horizontal scaling
-    
-    **Base URL**: \`http://localhost:8081/api/v1\`
-    
-    **Authentication**: None required (read-only API)
-    
-    **Rate Limiting**: Not implemented
-    
-    **CORS**: Enabled for all origins
-    
-    **WebSocket**: Available at \`/api/v1/ws\` for real-time data streaming
-  version: 2.0.0
-  contact:
-    name: Kubernetes Cluster Info Collector
-    url: https://github.com/srikarm/k8s-cluster-info-collector
-  license:
-    name: MIT
-    url: https://opensource.org/licenses/MIT
-
+    REST API for Kubernetes Cluster Info Collector. Provides cluster resource, snapshot, stats, health, metrics, and WebSocket endpoints.
 servers:
-  - url: http://localhost:8081/api/v1
-    description: Local development server
-  - url: https://cluster-info-collector.example.com/api/v1
-    description: Production server
-
-tags:
-  - name: snapshots
-    description: Cluster snapshot management and historical data
-  - name: resources
-    description: Kubernetes resource information (9 resource types)
-  - name: statistics
-    description: Statistics, metrics, and Kafka monitoring
-  - name: health
-    description: Health checks and system status
-  - name: streaming
-    description: Real-time WebSocket data streaming
-  - name: retention
-    description: Data retention and cleanup operations
-
+  - url: /api/v1
 paths:
+  /:
+    get:
+      summary: API root metadata
+      description: Returns API metadata and available endpoints.
+      responses:
+        '200':
+          description: API metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  service:
+                    type: string
+                  version:
+                    type: string
+                  commit:
+                    type: string
+                  endpoints:
+                    type: array
+                    items:
+                      type: string
   /snapshots:
     get:
-      tags:
-        - snapshots
       summary: List cluster snapshots
-      description: Retrieve a list of cluster snapshots with resource counts
+      description: Returns a list of available cluster snapshots.
       parameters:
-        - name: limit
-          in: query
-          description: Maximum number of snapshots to return
-          required: false
+        - in: query
+          name: limit
           schema:
             type: integer
             minimum: 1
             maximum: 1000
-            default: 50
+          description: Maximum number of snapshots to return (default 50)
       responses:
         '200':
           description: List of snapshots
@@ -113,40 +86,19 @@ paths:
                       \$ref: '#/components/schemas/SnapshotSummary'
                   count:
                     type: integer
-                    description: Number of snapshots returned
-              example:
-                snapshots:
-                  - id: 123
-                    timestamp: "2025-01-15T10:30:00Z"
-                    deployments: 15
-                    pods: 45
-                    nodes: 3
-                    services: 20
-                    ingresses: 5
-                    configmaps: 25
-                    secrets: 30
-                    persistent_volumes: 10
-                    persistent_volume_claims: 8
-                count: 1
-        '500':
-          \$ref: '#/components/responses/InternalServerError'
-
   /snapshots/{id}:
     get:
-      tags:
-        - snapshots
-      summary: Get specific snapshot
-      description: Retrieve detailed information for a specific cluster snapshot
+      summary: Get snapshot by ID
+      description: Returns a specific cluster snapshot by ID.
       parameters:
-        - name: id
-          in: path
+        - in: path
+          name: id
           required: true
-          description: Snapshot ID
           schema:
             type: integer
       responses:
         '200':
-          description: Detailed snapshot information
+          description: Snapshot data
           content:
             application/json:
               schema:
@@ -159,36 +111,30 @@ paths:
                     format: date-time
                   cluster_info:
                     \$ref: '#/components/schemas/ClusterInfo'
-        '400':
-          \$ref: '#/components/responses/BadRequest'
         '404':
-          \$ref: '#/components/responses/NotFound'
-        '500':
-          \$ref: '#/components/responses/InternalServerError'
-
+          description: Snapshot not found
   /snapshots/latest:
     get:
-      tags:
-        - snapshots
       summary: Get latest snapshot
-      description: Redirect to the most recent cluster snapshot
+      description: Redirects to the latest snapshot by ID.
       responses:
         '302':
-          description: Redirects to /snapshots/{id} for the latest snapshot
-        '404':
-          \$ref: '#/components/responses/NotFound'
-        '500':
-          \$ref: '#/components/responses/InternalServerError'
-
+          description: Redirect to /snapshots/{id}
   /deployments:
     get:
-      tags:
-        - resources
       summary: List deployments
-      description: Get all deployments from the latest snapshot
+      description: Returns deployments from the latest snapshot.
       parameters:
-        - \$ref: '#/components/parameters/LimitParam'
-        - \$ref: '#/components/parameters/NamespaceParam'
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+        - in: query
+          name: namespace
+          schema:
+            type: string
       responses:
         '200':
           description: List of deployments
@@ -200,23 +146,24 @@ paths:
                   data:
                     type: array
                     items:
-                      \$ref: '#/components/schemas/DeploymentSummary'
+                      \$ref: '#/components/schemas/Deployment'
                   count:
                     type: integer
-        '404':
-          \$ref: '#/components/responses/NotFound'
-        '500':
-          \$ref: '#/components/responses/InternalServerError'
-
   /pods:
     get:
-      tags:
-        - resources
       summary: List pods
-      description: Get all pods from the latest snapshot
+      description: Returns pods from the latest snapshot.
       parameters:
-        - \$ref: '#/components/parameters/LimitParam'
-        - \$ref: '#/components/parameters/NamespaceParam'
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+        - in: query
+          name: namespace
+          schema:
+            type: string
       responses:
         '200':
           description: List of pods
@@ -228,22 +175,13 @@ paths:
                   data:
                     type: array
                     items:
-                      \$ref: '#/components/schemas/PodSummary'
+                      \$ref: '#/components/schemas/Pod'
                   count:
                     type: integer
-        '404':
-          \$ref: '#/components/responses/NotFound'
-        '500':
-          \$ref: '#/components/responses/InternalServerError'
-
   /nodes:
     get:
-      tags:
-        - resources
       summary: List nodes
-      description: Get all nodes from the latest snapshot
-      parameters:
-        - \$ref: '#/components/parameters/LimitParam'
+      description: Returns nodes from the latest snapshot.
       responses:
         '200':
           description: List of nodes
@@ -255,23 +193,24 @@ paths:
                   data:
                     type: array
                     items:
-                      \$ref: '#/components/schemas/NodeSummary'
+                      \$ref: '#/components/schemas/Node'
                   count:
                     type: integer
-        '404':
-          \$ref: '#/components/responses/NotFound'
-        '500':
-          \$ref: '#/components/responses/InternalServerError'
-
   /services:
     get:
-      tags:
-        - resources
       summary: List services
-      description: Get all services from the latest snapshot
+      description: Returns services from the latest snapshot.
       parameters:
-        - \$ref: '#/components/parameters/LimitParam'
-        - \$ref: '#/components/parameters/NamespaceParam'
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+        - in: query
+          name: namespace
+          schema:
+            type: string
       responses:
         '200':
           description: List of services
@@ -283,23 +222,24 @@ paths:
                   data:
                     type: array
                     items:
-                      \$ref: '#/components/schemas/ServiceSummary'
+                      \$ref: '#/components/schemas/Service'
                   count:
                     type: integer
-        '404':
-          \$ref: '#/components/responses/NotFound'
-        '500':
-          \$ref: '#/components/responses/InternalServerError'
-
   /ingresses:
     get:
-      tags:
-        - resources
       summary: List ingresses
-      description: Get all ingresses from the latest snapshot
+      description: Returns ingresses from the latest snapshot.
       parameters:
-        - \$ref: '#/components/parameters/LimitParam'
-        - \$ref: '#/components/parameters/NamespaceParam'
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+        - in: query
+          name: namespace
+          schema:
+            type: string
       responses:
         '200':
           description: List of ingresses
@@ -311,26 +251,27 @@ paths:
                   data:
                     type: array
                     items:
-                      \$ref: '#/components/schemas/IngressSummary'
+                      \$ref: '#/components/schemas/Ingress'
                   count:
                     type: integer
-        '404':
-          \$ref: '#/components/responses/NotFound'
-        '500':
-          \$ref: '#/components/responses/InternalServerError'
-
   /configmaps:
     get:
-      tags:
-        - resources
-      summary: List ConfigMaps
-      description: Get all ConfigMaps from the latest snapshot
+      summary: List configmaps
+      description: Returns configmaps from the latest snapshot.
       parameters:
-        - \$ref: '#/components/parameters/LimitParam'
-        - \$ref: '#/components/parameters/NamespaceParam'
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+        - in: query
+          name: namespace
+          schema:
+            type: string
       responses:
         '200':
-          description: List of ConfigMaps
+          description: List of configmaps
           content:
             application/json:
               schema:
@@ -339,26 +280,27 @@ paths:
                   data:
                     type: array
                     items:
-                      \$ref: '#/components/schemas/ConfigMapSummary'
+                      \$ref: '#/components/schemas/ConfigMap'
                   count:
                     type: integer
-        '404':
-          \$ref: '#/components/responses/NotFound'
-        '500':
-          \$ref: '#/components/responses/InternalServerError'
-
   /secrets:
     get:
-      tags:
-        - resources
-      summary: List Secrets
-      description: Get all Secrets from the latest snapshot (data keys only, not values)
+      summary: List secrets
+      description: Returns secrets from the latest snapshot.
       parameters:
-        - \$ref: '#/components/parameters/LimitParam'
-        - \$ref: '#/components/parameters/NamespaceParam'
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+        - in: query
+          name: namespace
+          schema:
+            type: string
       responses:
         '200':
-          description: List of Secrets
+          description: List of secrets
           content:
             application/json:
               schema:
@@ -367,25 +309,16 @@ paths:
                   data:
                     type: array
                     items:
-                      \$ref: '#/components/schemas/SecretSummary'
+                      \$ref: '#/components/schemas/Secret'
                   count:
                     type: integer
-        '404':
-          \$ref: '#/components/responses/NotFound'
-        '500':
-          \$ref: '#/components/responses/InternalServerError'
-
   /persistent-volumes:
     get:
-      tags:
-        - resources
-      summary: List PersistentVolumes
-      description: Get all PersistentVolumes from the latest snapshot
-      parameters:
-        - \$ref: '#/components/parameters/LimitParam'
+      summary: List persistent volumes
+      description: Returns persistent volumes from the latest snapshot.
       responses:
         '200':
-          description: List of PersistentVolumes
+          description: List of persistent volumes
           content:
             application/json:
               schema:
@@ -394,26 +327,27 @@ paths:
                   data:
                     type: array
                     items:
-                      \$ref: '#/components/schemas/PersistentVolumeSummary'
+                      \$ref: '#/components/schemas/PersistentVolume'
                   count:
                     type: integer
-        '404':
-          \$ref: '#/components/responses/NotFound'
-        '500':
-          \$ref: '#/components/responses/InternalServerError'
-
   /persistent-volume-claims:
     get:
-      tags:
-        - resources
-      summary: List PersistentVolumeClaims
-      description: Get all PersistentVolumeClaims from the latest snapshot
+      summary: List persistent volume claims
+      description: Returns persistent volume claims from the latest snapshot.
       parameters:
-        - \$ref: '#/components/parameters/LimitParam'
-        - \$ref: '#/components/parameters/NamespaceParam'
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+        - in: query
+          name: namespace
+          schema:
+            type: string
       responses:
         '200':
-          description: List of PersistentVolumeClaims
+          description: List of persistent volume claims
           content:
             application/json:
               schema:
@@ -422,506 +356,140 @@ paths:
                   data:
                     type: array
                     items:
-                      \$ref: '#/components/schemas/PersistentVolumeClaimSummary'
+                      \$ref: '#/components/schemas/PersistentVolumeClaim'
                   count:
                     type: integer
-        '404':
-          \$ref: '#/components/responses/NotFound'
-        '500':
-          \$ref: '#/components/responses/InternalServerError'
-
+  /ws:
+    get:
+      summary: WebSocket cluster updates
+      description: WebSocket endpoint for real-time cluster updates.
+      responses:
+        '101':
+          description: WebSocket upgrade
   /stats:
     get:
-      tags:
-        - statistics
-      summary: Get general statistics
-      description: Retrieve general cluster statistics including total snapshots and latest snapshot resource counts
+      summary: Cluster statistics
+      description: Returns statistics about snapshots and resources.
       responses:
         '200':
-          description: General statistics
+          description: Statistics
           content:
             application/json:
               schema:
                 type: object
-                properties:
-                  total_snapshots:
-                    type: integer
-                    description: Total number of snapshots stored
-                  latest_snapshot:
-                    type: object
-                    description: Resource counts from the latest snapshot
-                    properties:
-                      deployments:
-                        type: integer
-                      pods:
-                        type: integer
-                      nodes:
-                        type: integer
-                      services:
-                        type: integer
-                      ingresses:
-                        type: integer
-                      configmaps:
-                        type: integer
-                      secrets:
-                        type: integer
-                      persistent_volumes:
-                        type: integer
-                      persistent_volume_claims:
-                        type: integer
-              example:
-                total_snapshots: 150
-                latest_snapshot:
-                  deployments: 15
-                  pods: 45
-                  nodes: 3
-                  services: 20
-                  ingresses: 5
-                  configmaps: 25
-                  secrets: 30
-                  persistent_volumes: 10
-                  persistent_volume_claims: 8
-        '500':
-          \$ref: '#/components/responses/InternalServerError'
-
   /stats/retention:
     get:
-      tags:
-        - statistics
-      summary: Get retention statistics
-      description: Retrieve data retention statistics including database size and snapshot age range
+      summary: Retention statistics
+      description: Returns database size and retention span.
       responses:
         '200':
-          description: Retention statistics
+          description: Retention stats
           content:
             application/json:
               schema:
                 type: object
-                properties:
-                  database_size:
-                    type: string
-                    description: Human-readable database size
-                  oldest_snapshot:
-                    type: string
-                    format: date-time
-                    description: Timestamp of the oldest snapshot
-                  newest_snapshot:
-                    type: string
-                    format: date-time
-                    description: Timestamp of the newest snapshot
-                  retention_span:
-                    type: string
-                    description: Time span between oldest and newest snapshots
-              example:
-                database_size: "256 MB"
-                oldest_snapshot: "2025-01-01T00:00:00Z"
-                newest_snapshot: "2025-01-15T12:00:00Z"
-                retention_span: "14d12h"
-        '500':
-          \$ref: '#/components/responses/InternalServerError'
-
-  /metrics:
+  /health:
     get:
-      tags:
-        - statistics
-      summary: Prometheus metrics
-      description: Get Prometheus-format metrics for monitoring and alerting
+      summary: Health check
+      description: Returns health status of the API server and database.
       responses:
         '200':
-          description: Prometheus metrics
+          description: Health status
+          content:
+            application/json:
+              schema:
+                type: object
+  /healthz:
+    get:
+      summary: Kubernetes health check
+      description: Alias for /health.
+      responses:
+        '200':
+          description: Health status
+          content:
+            application/json:
+              schema:
+                type: object
+  /metrics:
+    get:
+      summary: Metrics
+      description: Returns Go runtime and process metrics.
+      responses:
+        '200':
+          description: Metrics
+          content:
+            application/json:
+              schema:
+                type: object
+  /ready:
+    get:
+      summary: Readiness probe
+      description: Returns readiness status for Kubernetes.
+      responses:
+        '200':
+          description: Ready
           content:
             text/plain:
               schema:
                 type: string
-              example: |
-                # HELP cluster_info_collections_total Total number of cluster collections
-                # TYPE cluster_info_collections_total counter
-                cluster_info_collections_total{status="success"} 150
-                cluster_info_collections_total{status="failure"} 2
-                
-                # HELP cluster_info_resource_count Number of resources collected
-                # TYPE cluster_info_resource_count gauge
-                cluster_info_resource_count{resource_type="deployments"} 25
-                cluster_info_resource_count{resource_type="pods"} 75
-                cluster_info_resource_count{resource_type="nodes"} 3
-                
-                # HELP kafka_producer_messages_sent_total Messages sent to Kafka
-                # TYPE kafka_producer_messages_sent_total counter
-                kafka_producer_messages_sent_total 150
-                
-                # HELP kafka_consumer_lag_total Consumer lag per partition
-                # TYPE kafka_consumer_lag_total gauge
-                kafka_consumer_lag_total{topic="cluster-info",partition="0"} 0
         '503':
-          description: Metrics not enabled
+          description: Not ready
           content:
-            application/json:
+            text/plain:
               schema:
-                \$ref: '#/components/schemas/Error'
-
-  /stats/kafka:
+                type: string
+  /version:
     get:
-      tags:
-        - statistics
-      summary: Kafka statistics
-      description: Get Kafka producer and consumer statistics (v2.0 feature)
+      summary: Version info
+      description: Returns version, commit hash, and Go version.
       responses:
         '200':
-          description: Kafka statistics
+          description: Version info
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  kafka_enabled:
-                    type: boolean
-                  producer_stats:
-                    type: object
-                    properties:
-                      messages_sent:
-                        type: integer
-                      send_errors:
-                        type: integer
-                      avg_send_duration_ms:
-                        type: number
-                      topic:
-                        type: string
-                      partitions:
-                        type: integer
-                  consumer_stats:
-                    type: object
-                    properties:
-                      messages_consumed:
-                        type: integer
-                      processing_errors:
-                        type: integer
-                      avg_processing_duration_ms:
-                        type: number
-                      current_lag:
-                        type: integer
-                      consumer_group:
-                        type: string
-                  topic_info:
-                    type: object
-                    properties:
-                      name:
-                        type: string
-                      partitions:
-                        type: integer
-                      replication_factor:
-                        type: integer
-              example:
-                kafka_enabled: true
-                producer_stats:
-                  messages_sent: 150
-                  send_errors: 0
-                  avg_send_duration_ms: 5.2
-                  topic: "cluster-info"
-                  partitions: 3
-                consumer_stats:
-                  messages_consumed: 150
-                  processing_errors: 1
-                  avg_processing_duration_ms: 125.5
-                  current_lag: 0
-                  consumer_group: "cluster-info-consumer"
-                topic_info:
-                  name: "cluster-info"
-                  partitions: 3
-                  replication_factor: 1
-        '503':
-          description: Kafka not enabled
-          content:
-            application/json:
-              schema:
-                \$ref: '#/components/schemas/Error'
-        '500':
-          \$ref: '#/components/responses/InternalServerError'
-
-  /retention/cleanup:
-    post:
-      tags:
-        - statistics
-      summary: Trigger manual cleanup
-      description: Manually trigger data retention cleanup process
-      responses:
-        '200':
-          description: Cleanup triggered successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                  deleted_snapshots:
-                    type: integer
-                  freed_space_mb:
-                    type: number
-                  cleanup_duration_ms:
-                    type: number
-              example:
-                message: "Manual cleanup completed"
-                deleted_snapshots: 5
-                freed_space_mb: 150.5
-                cleanup_duration_ms: 1250
-        '503':
-          description: Retention not enabled
-          content:
-            application/json:
-              schema:
-                \$ref: '#/components/schemas/Error'
-        '500':
-          \$ref: '#/components/responses/InternalServerError'
-
-  /health:
-    get:
-      tags:
-        - health
-      summary: Health check
-      description: |
-        Comprehensive health check for all system components including:
-        - API server status
-        - Database connectivity
-        - Kafka connectivity (if enabled)
-        - WebSocket streaming (if enabled)
-      responses:
-        '200':
-          description: Service is healthy
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    enum: [healthy, degraded]
-                  timestamp:
-                    type: string
-                    format: date-time
-                  components:
-                    type: object
-                    properties:
-                      database:
-                        type: object
-                        properties:
-                          status:
-                            type: string
-                            enum: [healthy, failed]
-                          connection_time_ms:
-                            type: number
-                      kafka:
-                        type: object
-                        properties:
-                          enabled:
-                            type: boolean
-                          status:
-                            type: string
-                            enum: [healthy, failed, disabled]
-                          producer_healthy:
-                            type: boolean
-                          consumer_healthy:
-                            type: boolean
-                      streaming:
-                        type: object
-                        properties:
-                          enabled:
-                            type: boolean
-                          active_connections:
-                            type: integer
                   version:
                     type: string
-                  uptime_seconds:
-                    type: integer
-              example:
-                status: "healthy"
-                timestamp: "2025-01-15T12:00:00Z"
-                components:
-                  database:
-                    status: "healthy"
-                    connection_time_ms: 2.5
-                  kafka:
-                    enabled: true
-                    status: "healthy"
-                    producer_healthy: true
-                    consumer_healthy: true
-                  streaming:
-                    enabled: true
-                    active_connections: 3
-                version: "v2.0.0"
-                uptime_seconds: 86400
-        '503':
-          description: Service degraded or unavailable
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - \$ref: '#/components/schemas/Error'
-                  - type: object
-                    properties:
-                      components:
-                        type: object
-                        description: Component-specific health status
-
-  /ws:
-    get:
-      tags:
-        - streaming
-      summary: WebSocket connection
-      description: |
-        Establish a WebSocket connection for real-time cluster data streaming.
-        
-        **Protocol**: WebSocket (ws://)
-        
-        **Message Types**:
-        - \`cluster_update\`: Full cluster data update
-        - \`metrics_update\`: Metrics data update
-        - \`alert\`: Alert notifications
-        
-        **Connection**: Upgrade HTTP connection to WebSocket
-      responses:
-        '101':
-          description: WebSocket connection established
-        '503':
-          description: WebSocket streaming not enabled
-          content:
-            application/json:
-              schema:
-                \$ref: '#/components/schemas/Error'
-
+                  commit_hash:
+                    type: string
+                  go_version:
+                    type: string
+                  service:
+                    type: string
 components:
-  parameters:
-    LimitParam:
-      name: limit
-      in: query
-      description: Maximum number of resources to return
-      required: false
-      schema:
-        type: integer
-        minimum: 1
-        maximum: 1000
-        default: 100
-    
-    NamespaceParam:
-      name: namespace
-      in: query
-      description: Filter resources by namespace
-      required: false
-      schema:
-        type: string
-
   schemas:
     SnapshotSummary:
       type: object
       properties:
         id:
           type: integer
-          description: Unique snapshot identifier
         timestamp:
           type: string
           format: date-time
-          description: When the snapshot was taken
         deployments:
           type: integer
-          description: Number of deployments in this snapshot
         pods:
           type: integer
-          description: Number of pods in this snapshot
         nodes:
           type: integer
-          description: Number of nodes in this snapshot
         services:
           type: integer
-          description: Number of services in this snapshot
         ingresses:
           type: integer
-          description: Number of ingresses in this snapshot
         configmaps:
           type: integer
-          description: Number of ConfigMaps in this snapshot
         secrets:
           type: integer
-          description: Number of Secrets in this snapshot
         persistent_volumes:
           type: integer
-          description: Number of PersistentVolumes in this snapshot
         persistent_volume_claims:
           type: integer
-          description: Number of PersistentVolumeClaims in this snapshot
-
     ClusterInfo:
       type: object
-      description: Complete cluster state information
-      properties:
-        timestamp:
-          type: string
-          format: date-time
-        deployments:
-          type: array
-          items:
-            \$ref: '#/components/schemas/DeploymentInfo'
-        pods:
-          type: array
-          items:
-            \$ref: '#/components/schemas/PodInfo'
-        nodes:
-          type: array
-          items:
-            \$ref: '#/components/schemas/NodeInfo'
-        services:
-          type: array
-          items:
-            \$ref: '#/components/schemas/ServiceInfo'
-        ingresses:
-          type: array
-          items:
-            \$ref: '#/components/schemas/IngressInfo'
-        configmaps:
-          type: array
-          items:
-            \$ref: '#/components/schemas/ConfigMapInfo'
-        secrets:
-          type: array
-          items:
-            \$ref: '#/components/schemas/SecretInfo'
-        persistent_volumes:
-          type: array
-          items:
-            \$ref: '#/components/schemas/PersistentVolumeInfo'
-        persistent_volume_claims:
-          type: array
-          items:
-            \$ref: '#/components/schemas/PersistentVolumeClaimInfo'
-
-    DeploymentInfo:
-      type: object
-      properties:
-        name:
-          type: string
-        namespace:
-          type: string
-        created_time:
-          type: string
-          format: date-time
-        replicas:
-          type: integer
-        ready_replicas:
-          type: integer
-        updated_replicas:
-          type: integer
-        conditions:
-          type: array
-          items:
-            type: object
-        labels:
-          type: object
-          additionalProperties:
-            type: string
-        annotations:
-          type: object
-          additionalProperties:
-            type: string
-
-    DeploymentSummary:
+      description: Cluster resource data (structure matches your models.ClusterInfo)
+    Deployment:
       type: object
       properties:
         name:
@@ -935,54 +503,7 @@ components:
         created_time:
           type: string
           format: date-time
-
-    PodInfo:
-      type: object
-      properties:
-        name:
-          type: string
-        namespace:
-          type: string
-        deployment_name:
-          type: string
-        created_time:
-          type: string
-          format: date-time
-        phase:
-          type: string
-          enum: [Pending, Running, Succeeded, Failed, Unknown]
-        node_name:
-          type: string
-        pod_ip:
-          type: string
-        host_ip:
-          type: string
-        restart_count:
-          type: integer
-        cpu_request:
-          type: string
-        cpu_limit:
-          type: string
-        memory_request:
-          type: string
-        memory_limit:
-          type: string
-        storage_request:
-          type: string
-        labels:
-          type: object
-          additionalProperties:
-            type: string
-        annotations:
-          type: object
-          additionalProperties:
-            type: string
-        container_statuses:
-          type: array
-          items:
-            \$ref: '#/components/schemas/ContainerStatus'
-
-    PodSummary:
+    Pod:
       type: object
       properties:
         name:
@@ -998,65 +519,13 @@ components:
         created_time:
           type: string
           format: date-time
-
-    ContainerStatus:
+    Node:
       type: object
       properties:
         name:
           type: string
         ready:
-          type: boolean
-        restart_count:
-          type: integer
-        image:
           type: string
-        state:
-          type: string
-
-    NodeInfo:
-      type: object
-      properties:
-        name:
-          type: string
-        created_time:
-          type: string
-          format: date-time
-        ready:
-          type: boolean
-        cpu_capacity:
-          type: string
-        memory_capacity:
-          type: string
-        storage_capacity:
-          type: string
-        cpu_allocatable:
-          type: string
-        memory_allocatable:
-          type: string
-        storage_allocatable:
-          type: string
-        os_image:
-          type: string
-        kernel_version:
-          type: string
-        kubelet_version:
-          type: string
-        labels:
-          type: object
-          additionalProperties:
-            type: string
-        annotations:
-          type: object
-          additionalProperties:
-            type: string
-
-    NodeSummary:
-      type: object
-      properties:
-        name:
-          type: string
-        ready:
-          type: boolean
         cpu_capacity:
           type: string
         memory_capacity:
@@ -1064,44 +533,7 @@ components:
         created_time:
           type: string
           format: date-time
-
-    ServiceInfo:
-      type: object
-      properties:
-        name:
-          type: string
-        namespace:
-          type: string
-        created_time:
-          type: string
-          format: date-time
-        type:
-          type: string
-          enum: [ClusterIP, NodePort, LoadBalancer, ExternalName]
-        cluster_ip:
-          type: string
-        external_ips:
-          type: array
-          items:
-            type: string
-        ports:
-          type: array
-          items:
-            \$ref: '#/components/schemas/ServicePort'
-        selector:
-          type: object
-          additionalProperties:
-            type: string
-        labels:
-          type: object
-          additionalProperties:
-            type: string
-        annotations:
-          type: object
-          additionalProperties:
-            type: string
-
-    ServiceSummary:
+    Service:
       type: object
       properties:
         name:
@@ -1115,54 +547,7 @@ components:
         created_time:
           type: string
           format: date-time
-
-    ServicePort:
-      type: object
-      properties:
-        name:
-          type: string
-        protocol:
-          type: string
-          enum: [TCP, UDP, SCTP]
-        port:
-          type: integer
-        target_port:
-          type: string
-        node_port:
-          type: integer
-
-    IngressInfo:
-      type: object
-      properties:
-        name:
-          type: string
-        namespace:
-          type: string
-        created_time:
-          type: string
-          format: date-time
-        hosts:
-          type: array
-          items:
-            type: string
-        paths:
-          type: array
-          items:
-            \$ref: '#/components/schemas/IngressPath'
-        tls:
-          type: array
-          items:
-            \$ref: '#/components/schemas/IngressTLS'
-        labels:
-          type: object
-          additionalProperties:
-            type: string
-        annotations:
-          type: object
-          additionalProperties:
-            type: string
-
-    IngressSummary:
+    Ingress:
       type: object
       properties:
         name:
@@ -1176,58 +561,7 @@ components:
         created_time:
           type: string
           format: date-time
-
-    IngressPath:
-      type: object
-      properties:
-        path:
-          type: string
-        path_type:
-          type: string
-        service_name:
-          type: string
-        service_port:
-          type: integer
-
-    IngressTLS:
-      type: object
-      properties:
-        hosts:
-          type: array
-          items:
-            type: string
-        secret_name:
-          type: string
-
-    ConfigMapInfo:
-      type: object
-      properties:
-        name:
-          type: string
-        namespace:
-          type: string
-        created_time:
-          type: string
-          format: date-time
-        data:
-          type: object
-          additionalProperties:
-            type: string
-        binary_data:
-          type: object
-          additionalProperties:
-            type: string
-            format: byte
-        labels:
-          type: object
-          additionalProperties:
-            type: string
-        annotations:
-          type: object
-          additionalProperties:
-            type: string
-
-    ConfigMapSummary:
+    ConfigMap:
       type: object
       properties:
         name:
@@ -1241,34 +575,7 @@ components:
         created_time:
           type: string
           format: date-time
-
-    SecretInfo:
-      type: object
-      properties:
-        name:
-          type: string
-        namespace:
-          type: string
-        created_time:
-          type: string
-          format: date-time
-        type:
-          type: string
-        data_keys:
-          type: array
-          items:
-            type: string
-          description: Only the keys are stored, not the actual secret values
-        labels:
-          type: object
-          additionalProperties:
-            type: string
-        annotations:
-          type: object
-          additionalProperties:
-            type: string
-
-    SecretSummary:
+    Secret:
       type: object
       properties:
         name:
@@ -1284,47 +591,7 @@ components:
         created_time:
           type: string
           format: date-time
-
-    PersistentVolumeInfo:
-      type: object
-      properties:
-        name:
-          type: string
-        created_time:
-          type: string
-          format: date-time
-        capacity:
-          type: string
-        access_modes:
-          type: array
-          items:
-            type: string
-            enum: [ReadWriteOnce, ReadOnlyMany, ReadWriteMany, ReadWriteOncePod]
-        reclaim_policy:
-          type: string
-          enum: [Retain, Recycle, Delete]
-        storage_class:
-          type: string
-        volume_mode:
-          type: string
-          enum: [Filesystem, Block]
-        status:
-          type: string
-          enum: [Pending, Available, Bound, Released, Failed]
-        claim_ref:
-          type: string
-        volume_source:
-          type: string
-        labels:
-          type: object
-          additionalProperties:
-            type: string
-        annotations:
-          type: object
-          additionalProperties:
-            type: string
-
-    PersistentVolumeSummary:
+    PersistentVolume:
       type: object
       properties:
         name:
@@ -1342,41 +609,7 @@ components:
         created_time:
           type: string
           format: date-time
-
-    PersistentVolumeClaimInfo:
-      type: object
-      properties:
-        name:
-          type: string
-        namespace:
-          type: string
-        created_time:
-          type: string
-          format: date-time
-        requested_size:
-          type: string
-        access_modes:
-          type: array
-          items:
-            type: string
-        storage_class:
-          type: string
-        volume_mode:
-          type: string
-        status:
-          type: string
-        volume_name:
-          type: string
-        labels:
-          type: object
-          additionalProperties:
-            type: string
-        annotations:
-          type: object
-          additionalProperties:
-            type: string
-
-    PersistentVolumeClaimSummary:
+    PersistentVolumeClaim:
       type: object
       properties:
         name:
@@ -1394,232 +627,7 @@ components:
         created_time:
           type: string
           format: date-time
-
-    Error:
-      type: object
-      required:
-        - error
-      properties:
-        error:
-          type: string
-          description: Error message
-
-  responses:
-    BadRequest:
-      description: Bad request
-      content:
-        application/json:
-          schema:
-            \$ref: '#/components/schemas/Error'
-          example:
-            error: "Invalid snapshot ID"
-
-    NotFound:
-      description: Resource not found
-      content:
-        application/json:
-          schema:
-            \$ref: '#/components/schemas/Error'
-          example:
-            error: "Snapshot not found"
-
-    InternalServerError:
-      description: Internal server error
-      content:
-        application/json:
-          schema:
-            \$ref: '#/components/schemas/Error'
-          example:
-            error: "Failed to fetch data"
-
-    WebSocketMessage:
-      type: object
-      description: Base WebSocket message format
-      properties:
-        type:
-          type: string
-          enum: [cluster_update, metrics_update, alert, heartbeat]
-        timestamp:
-          type: string
-          format: date-time
-        data:
-          type: object
-      required:
-        - type
-        - timestamp
-        - data
-
-    ClusterUpdateMessage:
-      type: object
-      description: WebSocket message containing complete cluster data
-      properties:
-        type:
-          type: string
-          enum: [cluster_update]
-        timestamp:
-          type: string
-          format: date-time
-        data:
-          \$ref: '#/components/schemas/ClusterInfo'
-
-    MetricsUpdateMessage:
-      type: object
-      description: WebSocket message containing metrics data
-      properties:
-        type:
-          type: string
-          enum: [metrics_update]
-        timestamp:
-          type: string
-          format: date-time
-        data:
-          type: object
-          properties:
-            collection_duration:
-              type: string
-            resource_counts:
-              type: object
-              additionalProperties:
-                type: integer
-            kafka_metrics:
-              type: object
-              properties:
-                producer_messages_sent:
-                  type: integer
-                consumer_lag:
-                  type: integer
-                processing_time_ms:
-                  type: number
-
-    AlertMessage:
-      type: object
-      description: WebSocket message containing alert information
-      properties:
-        type:
-          type: string
-          enum: [alert]
-        timestamp:
-          type: string
-          format: date-time
-        data:
-          type: object
-          properties:
-            alert_type:
-              type: string
-              enum: [collection_failure, kafka_error, database_error, resource_threshold]
-            severity:
-              type: string
-              enum: [info, warning, critical]
-            message:
-              type: string
-            component:
-              type: string
-            details:
-              type: object
-
-# WebSocket message examples for v2.0
-x-websocket-messages:
-  cluster_update:
-    description: Complete cluster data update with all 9 resource types (v2.0)
-    example:
-      type: "cluster_update"
-      timestamp: "2025-07-11T12:00:00Z"
-      data:
-        timestamp: "2025-07-11T12:00:00Z"
-        deployments:
-          - name: "nginx-deployment"
-            namespace: "default"
-            replicas: 3
-            ready_replicas: 3
-        pods:
-          - name: "nginx-pod-abc123"
-            namespace: "default"
-            node_name: "worker-1"
-            phase: "Running"
-        nodes:
-          - name: "master-1"
-            ready: true
-            cpu_capacity: "4"
-            memory_capacity: "8Gi"
-        services:
-          - name: "nginx-service"
-            namespace: "default"
-            type: "ClusterIP"
-            cluster_ip: "10.96.1.100"
-        ingresses:
-          - name: "nginx-ingress"
-            namespace: "default"
-            hosts: ["example.com"]
-        configmaps:
-          - name: "app-config"
-            namespace: "default"
-            data_keys: 5
-        secrets:
-          - name: "app-secrets"
-            namespace: "default"
-            type: "Opaque"
-        persistent_volumes:
-          - name: "pv-001"
-            capacity: "10Gi"
-            storage_class: "fast-ssd"
-        persistent_volume_claims:
-          - name: "data-claim"
-            namespace: "default"
-            requested_size: "5Gi"
-  
-  metrics_update:
-    description: Enhanced metrics including Kafka statistics (v2.0)
-    example:
-      type: "metrics_update"
-      timestamp: "2025-07-11T12:00:00Z"
-      data:
-        collection_duration: "3.2s"
-        resource_counts:
-          deployments: 25
-          pods: 75
-          nodes: 3
-          services: 30
-          ingresses: 5
-          configmaps: 45
-          secrets: 35
-          persistent_volumes: 10
-          persistent_volume_claims: 8
-        kafka_metrics:
-          producer_messages_sent: 150
-          consumer_lag: 2
-          processing_time_ms: 125.5
-          topic_partitions: 3
-        database_metrics:
-          active_connections: 5
-          query_duration_ms: 15.2
-          total_snapshots: 150
-  
-  alert:
-    description: Enhanced alert notifications with component details (v2.0)
-    example:
-      type: "alert"
-      timestamp: "2025-07-11T12:00:00Z"
-      data:
-        alert_type: "kafka_error"
-        severity: "warning"
-        message: "High consumer lag detected"
-        component: "kafka-consumer"
-        details:
-          lag_messages: 1500
-          partition: 0
-          topic: "cluster-info"
-          threshold: 1000
-  
-  heartbeat:
-    description: Periodic heartbeat to maintain connection (v2.0)
-    example:
-      type: "heartbeat"
-      timestamp: "2025-07-11T12:00:00Z"
-      data:
-        status: "healthy"
-        uptime_seconds: 86400
-        active_collections: 1
-        kafka_status: "connected"`;
+# --- END FULL REST API SWAGGER ---`;
             
             const ui = SwaggerUIBundle({
                 spec: jsyaml.load(yaml),

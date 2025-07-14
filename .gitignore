@@ -39,6 +39,3 @@ Thumbs.db
 secrets/
 
 .vscode/
-
-bin/
-*.log

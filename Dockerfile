@@ -1,6 +1,11 @@
 # Build stage
 FROM golang:1.21-alpine AS builder
 
+# Build arguments for version information
+ARG VERSION=dev
+ARG COMMIT_HASH=unknown
+ARG BUILD_TIME=unknown
+
 WORKDIR /app
 
 # Install git and ca-certificates
@@ -15,8 +20,10 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o cluster-info-collector .
+# Build the application with version info
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo \
+    -ldflags "-X main.version=${VERSION} -X main.commitHash=${COMMIT_HASH} -X main.buildTime=${BUILD_TIME}" \
+    -o cluster-info-collector .
 
 # Final stage
 FROM alpine:latest

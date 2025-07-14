@@ -8,6 +8,14 @@ CONSUMER_IMAGE_NAME = cluster-info-consumer
 IMAGE_TAG = latest
 DOCKER_REGISTRY ?= localhost:5000
 
+# Version information
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+COMMIT_HASH ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+BUILD_TIME ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+
+# Build flags
+LDFLAGS = -X main.version=$(VERSION) -X main.commitHash=$(COMMIT_HASH) -X main.buildTime=$(BUILD_TIME)
+
 # Helm variables
 HELM_CHART_PATH = helm/cluster-info-collector
 HELM_RELEASE_NAME ?= cluster-info-collector
@@ -18,14 +26,14 @@ HELM_VALUES_FILE ?= values.yaml
 build: build-collector build-consumer
 
 build-collector:
-	@echo "Building collector..."
+	@echo "Building collector with version info..."
 	go mod tidy
-	CGO_ENABLED=0 go build -a -installsuffix cgo -o bin/cluster-info-collector ./main.go
+	CGO_ENABLED=0 go build -a -installsuffix cgo -ldflags "$(LDFLAGS)" -o bin/cluster-info-collector ./main.go
 
 build-consumer:
-	@echo "Building consumer..."
+	@echo "Building consumer with version info..."
 	go mod tidy
-	CGO_ENABLED=0 go build -a -installsuffix cgo -o bin/consumer ./cmd/consumer
+	CGO_ENABLED=0 go build -a -installsuffix cgo -ldflags "$(LDFLAGS)" -o bin/consumer ./cmd/consumer
 
 # Run targets
 run-collector:
@@ -49,9 +57,18 @@ clean:
 
 # Docker targets
 docker-build:
-	@echo "Building Docker images..."
-	docker build -t $(IMAGE_NAME):$(IMAGE_TAG) .
-	docker build -f Dockerfile.consumer -t $(CONSUMER_IMAGE_NAME):$(IMAGE_TAG) .
+	@echo "Building Docker images with version info..."
+	docker build \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg COMMIT_HASH=$(COMMIT_HASH) \
+		--build-arg BUILD_TIME=$(BUILD_TIME) \
+		-t $(IMAGE_NAME):$(IMAGE_TAG) .
+	docker build \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg COMMIT_HASH=$(COMMIT_HASH) \
+		--build-arg BUILD_TIME=$(BUILD_TIME) \
+		-f Dockerfile.consumer \
+		-t $(CONSUMER_IMAGE_NAME):$(IMAGE_TAG) .
 
 docker-push: docker-build
 	docker tag $(IMAGE_NAME):$(IMAGE_TAG) $(DOCKER_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
