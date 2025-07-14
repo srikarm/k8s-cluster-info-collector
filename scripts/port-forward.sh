@@ -104,31 +104,30 @@ start_services_port_forward() {
         local pf_kafka_ui_pid=""
     fi
     
-    # Save PIDs
-    if [ -n "$pf_kafka_pid" ]; then
-        if [ -n "$pf_kafka_ui_pid" ]; then
-            echo "$pf_postgres_pid $pf_kafka_pid $pf_zookeeper_pid $pf_kafka_ui_pid" > /tmp/services-port-forward-pids.txt
-        else
-            echo "$pf_postgres_pid $pf_kafka_pid $pf_zookeeper_pid" > /tmp/services-port-forward-pids.txt
-        fi
-    else
-        echo "$pf_postgres_pid" > /tmp/services-port-forward-pids.txt
-    fi
+    # Save PIDs (always include all, filter out empty)
+    local pid_list=""
+    [ -n "$pf_postgres_pid" ] && pid_list+="$pf_postgres_pid "
+    [ -n "$pf_kafka_pid" ] && pid_list+="$pf_kafka_pid "
+    [ -n "$pf_zookeeper_pid" ] && pid_list+="$pf_zookeeper_pid "
+    [ -n "$pf_kafka_ui_pid" ] && pid_list+="$pf_kafka_ui_pid "
+    # Trim trailing space
+    pid_list=$(echo "$pid_list" | xargs)
+    echo "$pid_list" > /tmp/services-port-forward-pids.txt
     
     # Wait for port forwards to establish
     sleep 3
     
     echo ""
-    echo "✅ Service port forwarding started!"
-    echo ""
-    echo "📊 Service endpoints:"
-    echo "   • PostgreSQL: localhost:5432"
-    if [ -n "$pf_kafka_pid" ]; then
-        echo "   • Kafka: localhost:9092"
-        echo "   • Zookeeper: localhost:2181"
-    fi
-    if [ -n "$pf_kafka_ui_pid" ]; then
-        echo "   • Kafka UI: http://localhost:8090"
+    if [ -z "$pf_postgres_pid" ] && [ -z "$pf_kafka_pid" ] && [ -z "$pf_zookeeper_pid" ] && [ -z "$pf_kafka_ui_pid" ]; then
+        echo "⚠️  No service port-forwards were started! Check your services and namespace."
+    else
+        echo "✅ Service port forwarding started!"
+        echo ""
+        echo "📊 Service endpoints (active):"
+        [ -n "$pf_postgres_pid" ] && echo "   • PostgreSQL: localhost:5432 (PID: $pf_postgres_pid)" || echo "   • PostgreSQL: not forwarded"
+        [ -n "$pf_kafka_pid" ] && echo "   • Kafka: localhost:9092 (PID: $pf_kafka_pid)" || echo "   • Kafka: not forwarded"
+        [ -n "$pf_zookeeper_pid" ] && echo "   • Zookeeper: localhost:2181 (PID: $pf_zookeeper_pid)" || echo "   • Zookeeper: not forwarded"
+        [ -n "$pf_kafka_ui_pid" ] && echo "   • Kafka UI: http://localhost:8090 (PID: $pf_kafka_ui_pid)" || echo "   • Kafka UI: not forwarded"
     fi
     
     # Test service connectivity
@@ -145,39 +144,57 @@ start_application_port_forward() {
         exit 1
     fi
     
-    # Start port forwarding in background
+    # Start port forwarding in background with error checking
     echo "📊 Forwarding metrics port (8080)..."
     kubectl port-forward service/$SERVICE 8080:8080 -n $NAMESPACE > /tmp/port-forward-8080.log 2>&1 &
     local pf_metrics_pid=$!
-    
+    sleep 0.5
+    if ! ps -p $pf_metrics_pid > /dev/null 2>&1; then
+        echo "⚠️  Failed to start port-forward for Metrics (PID $pf_metrics_pid)"
+        pf_metrics_pid=""
+    fi
+
     echo "🔗 Forwarding API port (8081)..."
     kubectl port-forward service/$SERVICE 8081:8081 -n $NAMESPACE > /tmp/port-forward-8081.log 2>&1 &
     local pf_api_pid=$!
-    
+    sleep 0.5
+    if ! ps -p $pf_api_pid > /dev/null 2>&1; then
+        echo "⚠️  Failed to start port-forward for API (PID $pf_api_pid)"
+        pf_api_pid=""
+    fi
+
     echo "🌐 Forwarding WebSocket port (8082)..."
     kubectl port-forward service/$SERVICE 8082:8082 -n $NAMESPACE > /tmp/port-forward-8082.log 2>&1 &
     local pf_ws_pid=$!
-    
-    # Save PIDs
-    echo "$pf_metrics_pid $pf_api_pid $pf_ws_pid" > /tmp/port-forward-pids.txt
-    
+    sleep 0.5
+    if ! ps -p $pf_ws_pid > /dev/null 2>&1; then
+        echo "⚠️  Failed to start port-forward for WebSocket (PID $pf_ws_pid)"
+        pf_ws_pid=""
+    fi
+
+    # Save PIDs (always include all, filter out empty)
+    local pid_list=""
+    [ -n "$pf_metrics_pid" ] && pid_list+="$pf_metrics_pid "
+    [ -n "$pf_api_pid" ] && pid_list+="$pf_api_pid "
+    [ -n "$pf_ws_pid" ] && pid_list+="$pf_ws_pid "
+    pid_list=$(echo "$pid_list" | xargs)
+    echo "$pid_list" > /tmp/port-forward-pids.txt
+
     # Wait for port forwards to establish
     sleep 3
-    
+
     echo ""
-    echo "✅ Application port forwarding started!"
-    echo ""
-    echo "📊 Application endpoints:"
-    echo "   • Metrics: http://localhost:8080/metrics"
-    echo "   • Health: http://localhost:8080/health"
-    echo "   • API: http://localhost:8081/api/v1/health"
-    echo "   • WebSocket: ws://localhost:8082/api/v1/ws"
-    echo ""
-    echo "🔧 Process IDs:"
-    echo "   • Metrics (8080): $pf_metrics_pid"
-    echo "   • API (8081): $pf_api_pid"
-    echo "   • WebSocket (8082): $pf_ws_pid"
-    
+    if [ -z "$pf_metrics_pid" ] && [ -z "$pf_api_pid" ] && [ -z "$pf_ws_pid" ]; then
+        echo "⚠️  No application port-forwards were started! Check your service and namespace."
+    else
+        echo "✅ Application port forwarding started!"
+        echo ""
+        echo "📊 Application endpoints (active):"
+        [ -n "$pf_metrics_pid" ] && echo "   • Metrics: http://localhost:8080/metrics (PID: $pf_metrics_pid)" || echo "   • Metrics: not forwarded"
+        [ -n "$pf_api_pid" ] && echo "   • API: http://localhost:8081/api/v1/health (PID: $pf_api_pid)" || echo "   • API: not forwarded"
+        [ -n "$pf_ws_pid" ] && echo "   • WebSocket: ws://localhost:8082/api/v1/ws (PID: $pf_ws_pid)" || echo "   • WebSocket: not forwarded"
+    fi
+
     # Test connectivity
     test_connectivity
 }

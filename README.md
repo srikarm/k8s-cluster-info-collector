@@ -2,20 +2,29 @@
 
 A comprehensive Kubernetes monitoring and data collection platform with **Kafka-based architecture** for scalable, enterprise-grade cluster information collection, real-time streaming, alerting, and operational excellence.
 
-## 🎯 **NEW: Kafka Integration + Helm Deployment**
 
-**Major Update**: The collector has been completely refactored to use a **Kafka-based producer-consumer architecture** with comprehensive **Helm chart deployment support**.
+## 🎯 **NEW: Unified API, Consumer/Collector Split, and Robust Tooling**
+
+**Major Update**: The platform now features a unified REST API under `/api/v1` (served by the consumer), a clear split between collector (producer) and consumer (API + DB writer), robust port-forwarding and documentation scripts, and a comprehensive OpenAPI 3.0.3 spec.
+
 
 ### 🏗️ **Architecture Evolution**
 
-**Before (v1.0)**: `Collector → PostgreSQL` (direct write)  
-**Now (v2.0)**: `Collector → Kafka → Consumer → PostgreSQL` (decoupled, scalable)
+**Before (v1.0)**: `Collector → PostgreSQL` (direct write)
+
+**Now (v2.0)**: `Collector → Kafka → Consumer (API) → PostgreSQL` (decoupled, scalable)
+
 
 ### ✨ **What's New**
-- 🔄 **Kafka Integration**: Reliable message queuing with IBM Sarama client
+- 🔄 **Kafka Integration**: Reliable message queuing with Sarama client
 - ⚙️ **Producer-Consumer Pattern**: Scalable, fault-tolerant data processing
 - 🚀 **Helm Chart**: Complete Kubernetes deployment automation
--## � Troubleshooting
+- 🛡️ **Unified REST API**: All endpoints under `/api/v1` (served by consumer)
+- 🧩 **Consumer/Collector Split**: Collector (producer) and Consumer (API+DB) are separate, scalable services
+- 📜 **OpenAPI 3.0.3 Spec**: Full API spec in `docs/swagger.yaml`
+- 🛠️ **Robust Scripts**: `scripts/port-forward.sh` (port-forward manager), `scripts/view-api-docs.sh` (API docs viewer), and more
+- 🧪 **Improved Testing**: End-to-end and hybrid test scripts
+- 🏷️ **Version/Commit in API**: `/api/v1/version` returns build version and commit hash
 
 ### Hybrid Development Mode Issues
 
@@ -244,42 +253,45 @@ The collector supports both **legacy direct-write** and **modern Kafka-based** a
 - **Fault Tolerance**: Automatic failover and offset management
 - **Backpressure Handling**: Process messages at optimal rate
 
+k8s-cluster-info-collector/
+
 ### 📦 **Modular Design**
 
-The application follows a clean, modular architecture with **12 focused packages**:
+The application follows a clean, modular architecture with focused packages and clear separation of concerns:
 
 ```
 k8s-cluster-info-collector/
-├── main.go                    # Entry point
+├── main.go                    # Collector entry point
 ├── cmd/
-│   └── consumer/             # Standalone consumer service
+│   └── consumer/              # Standalone consumer service (serves API)
 ├── internal/
-│   ├── app/                  # Application orchestration & lifecycle
-│   ├── collector/            # Kubernetes resource collection
-│   ├── kafka/               # Kafka producer & consumer services
-│   ├── config/              # Configuration management
-│   ├── database/            # Database connection and schema
-│   ├── kubernetes/          # Kubernetes client wrapper
-│   ├── logger/             # Structured logging setup
-│   ├── models/             # Data structures and models
-│   ├── store/              # Data persistence layer
-│   ├── metrics/            # Prometheus metrics collection
-│   ├── retention/          # Data retention management
-│   ├── api/                # REST API server
-│   ├── alerting/           # Alertmanager integration
-│   └── streaming/          # WebSocket hub
-├── helm/                    # Kubernetes deployment charts
+│   ├── app/                   # Application orchestration & lifecycle
+│   ├── collector/             # Kubernetes resource collection
+│   ├── kafka/                 # Kafka producer & consumer logic
+│   ├── config/                # Configuration management
+│   ├── database/              # Database connection and schema
+│   ├── kubernetes/            # Kubernetes client wrapper
+│   ├── logger/                # Structured logging setup
+│   ├── models/                # Data structures and models
+│   ├── store/                 # Data persistence layer
+│   ├── metrics/               # Prometheus metrics collection
+│   ├── retention/             # Data retention management
+│   ├── api/                   # REST API server (all endpoints under /api/v1)
+│   ├── alerting/              # Alertmanager integration
+│   └── streaming/             # WebSocket hub
+├── scripts/                   # Utility scripts (port-forward, API docs, test, deploy)
+├── helm/                      # Kubernetes deployment charts
 │   └── cluster-info-collector/
-├── manifests/               # Kubernetes YAML manifests  
-│   ├── k8s-job.yaml        # Basic job deployment
-│   ├── k8s-cronjob.yaml    # Scheduled job deployment
-│   └── postgres.yaml       # PostgreSQL deployment
-├── grafana/                 # Pre-built dashboards
-├── docs/                    # Additional documentation
-│   └── swagger.yaml         # API documentation  
+├── manifests/                 # Kubernetes YAML manifests
+│   ├── k8s-job.yaml
+│   ├── k8s-cronjob.yaml
+│   └── postgres.yaml
+├── grafana/                   # Pre-built dashboards
+├── docs/                      # Additional documentation
+│   └── swagger.yaml           # OpenAPI 3.0.3 API spec
 └── docker/
-    ├── docker-compose.yml       # Multi-service development setup
-    └── docker-compose.dev.yml   # Development variant
+    ├── docker-compose.yml
+    └── docker-compose.dev.yml
 ```
 
 ### 🔧 **Key Architecture Benefits**
@@ -382,18 +394,22 @@ All detailed documentation is organized in the [`docs/`](docs/) folder:
 - **[Namespace Fix Guide](docs/COMPREHENSIVE_NAMESPACE_FIX.md)** - Namespace conflict resolution
 - **[Cleanup Guide](docs/CLEANUP_SUMMARY.md)** - Project organization and maintenance
 
-### 🛠️ Interactive Documentation Tools
+
+### 🛠️ Interactive Documentation & Utility Scripts
 ```bash
-# View API documentation (6 different methods)
+# View API documentation (Swagger UI, VS Code, HTML, etc.)
 ./scripts/view-api-docs.sh
 
-# Validate API documentation
+# Validate OpenAPI/Swagger spec
 ./scripts/validate-swagger.sh
 
-# Setup development environment
+# Manage port-forwarding for all services and endpoints
+./scripts/port-forward.sh [start|stop|status|test]
+
+# Setup hybrid development environment
 ./scripts/setup-hybrid.sh
 
-# Test complete system
+# Test complete system (hybrid mode)
 ./scripts/test-hybrid-setup.sh
 ```
 
@@ -618,7 +634,8 @@ docker run -p 8080:8080 \
 ./scripts/validate-swagger.sh
 ```
 
-### Available Endpoints
+
+### Available Endpoints (Unified under `/api/v1`)
 
 #### Snapshots
 - `GET /api/v1/snapshots` - List all snapshots
@@ -640,6 +657,14 @@ docker run -p 8080:8080 \
 - `GET /api/v1/stats` - General statistics
 - `GET /api/v1/stats/retention` - Retention statistics
 - `GET /api/v1/health` - API health check
+- `GET /api/v1/version` - API version and commit hash
+
+
+### OpenAPI Specification & Documentation
+
+- **OpenAPI/Swagger Spec:** See [`docs/swagger.yaml`](docs/swagger.yaml)
+- **Swagger UI:** Use `./scripts/view-api-docs.sh` to view and interact with the API docs in your browser or VS Code.
+- **Updating the Spec:** Edit `docs/swagger.yaml` and re-run the script to validate or view changes.
 
 ### Example API Usage
 ```bash
@@ -651,6 +676,12 @@ curl http://localhost:8081/api/v1/pods | jq .
 
 # Get cluster statistics
 curl http://localhost:8081/api/v1/stats | jq .
+
+# Get API version and commit
+curl http://localhost:8081/api/v1/version
+```
+# Get API version and commit
+curl http://localhost:8081/api/v1/version
 ```
 
 ## 🗄️ Data Retention
